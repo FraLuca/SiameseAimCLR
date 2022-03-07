@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from net.sim_loss import CosineSimLoss
 
 # torchlight
 import torchlight
@@ -38,6 +39,7 @@ class PT_Processor(Processor):
         self.model.apply(weights_init)
         self.loss = nn.CrossEntropyLoss()
         self.re_criterion = torch.nn.L1Loss(reduction='none')
+        self.sim_loss = CosineSimLoss()
         
     def load_optimizer(self):
         if self.arg.optimizer == 'SGD':
