@@ -12,19 +12,21 @@ from torchlight import import_class
 from processor.processor import init_seed
 init_seed(0)
 
+
 def save_src(target_path):
     code_root = os.getcwd()
     srczip = zipfile.ZipFile('./src.zip', 'w')
     for root, dirnames, filenames in os.walk(code_root):
-            for filename in filenames:
-                if filename.split('\n')[0].split('.')[-1] == 'py':
-                    srczip.write(os.path.join(root, filename).replace(code_root, '.'))
-                if filename.split('\n')[0].split('.')[-1] == 'yaml':
-                    srczip.write(os.path.join(root, filename).replace(code_root, '.'))
-                if filename.split('\n')[0].split('.')[-1] == 'ipynb':
-                    srczip.write(os.path.join(root, filename).replace(code_root, '.'))
+        for filename in filenames:
+            if filename.split('\n')[0].split('.')[-1] == 'py':
+                srczip.write(os.path.join(root, filename).replace(code_root, '.'))
+            if filename.split('\n')[0].split('.')[-1] == 'yaml':
+                srczip.write(os.path.join(root, filename).replace(code_root, '.'))
+            if filename.split('\n')[0].split('.')[-1] == 'ipynb':
+                srczip.write(os.path.join(root, filename).replace(code_root, '.'))
     srczip.close()
-    save_path = os.path.join(target_path, 'src_%s.zip' % time.strftime("%Y-%m-%d_%H_%M_%S", time.localtime()))
+    save_path = os.path.join(target_path, 'src_%s.zip' %
+                             time.strftime("%Y-%m-%d_%H_%M_%S", time.localtime()))
     shutil.copy('./src.zip', save_path)
 
 
@@ -34,6 +36,8 @@ if __name__ == '__main__':
     processors = dict()
 
     processors['pretrain_aimclr'] = import_class('processor.pretrain_aimclr.AimCLR_Processor')
+    processors['pretrain_siam_aimclr'] = import_class(
+        'processor.pretrain_siam_aimclr.SiameseAimCLR_Processor')
     processors['linear_evaluation'] = import_class('processor.linear_evaluation.LE_Processor')
 
     # add sub-parser

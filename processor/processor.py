@@ -51,14 +51,18 @@ class Processor(IO):
                 print('Dir removed: ', self.arg.work_dir + '/val')
             self.train_writer = SummaryWriter(os.path.join(self.arg.work_dir, 'train'), 'train')
             self.val_writer = SummaryWriter(os.path.join(self.arg.work_dir, 'val'), 'val')
+            self.disable_wandb = self.arg.disable_wandb
         else:
-            self.train_writer = self.val_writer = SummaryWriter(os.path.join(self.arg.work_dir, 'test'), 'test')
+            self.train_writer = self.val_writer = SummaryWriter(
+                os.path.join(self.arg.work_dir, 'test'), 'test')
 
         self.load_model()
         self.load_weights()
         self.gpu()
         self.load_data()
+        self.load_lr()
         self.load_optimizer()
+        self.load_scheduler()
 
         self.global_step = 0
 
@@ -83,6 +87,12 @@ class Processor(IO):
     def load_optimizer(self):
         pass
 
+    def load_scheduler(self):
+        pass
+
+    def load_lr(self):
+        pass
+
     def load_data(self):
         self.data_loader = dict()
 
@@ -97,7 +107,7 @@ class Processor(IO):
                     self.arg.device),
                 drop_last=True,
                 worker_init_fn=init_seed)
-                
+
         if self.arg.test_feeder_args:
             test_feeder = import_class(self.arg.test_feeder)
             self.data_loader['test'] = torch.utils.data.DataLoader(
@@ -124,7 +134,7 @@ class Processor(IO):
 
     def show_iter_info(self):
         if self.meta_info['iter'] % self.arg.log_interval == 0:
-            info ='\tIter {} Done.'.format(self.meta_info['iter'])
+            info = '\tIter {} Done.'.format(self.meta_info['iter'])
             for k, v in self.iter_info.items():
                 if isinstance(v, float):
                     info = info + ' | {}: {:.4f}'.format(k, v)
@@ -170,7 +180,7 @@ class Processor(IO):
             self.global_step = self.arg.start_epoch * len(self.data_loader['train'])
             self.meta_info['iter'] = self.global_step
             self.best_result = 0.0
-            
+
             for epoch in range(self.arg.start_epoch, self.arg.num_epoch):
                 self.meta_info['epoch'] = epoch + 1
 
@@ -193,8 +203,8 @@ class Processor(IO):
                         epoch + 1 == self.arg.num_epoch):
                     self.io.print_log('Eval epoch: {}'.format(epoch + 1))
                     self.test(epoch + 1)
-                    self.io.print_log("current %.2f%%, best %.2f%%" % 
-                                            (self.current_result, self.best_result))
+                    self.io.print_log("current %.2f%%, best %.2f%%" %
+                                      (self.current_result, self.best_result))
 
                     # save best model
                     filename = 'epoch%.3d_acc%.2f_model.pt' % (epoch + 1, self.current_result)
@@ -211,7 +221,7 @@ class Processor(IO):
 
         # test phase
         elif self.arg.phase == 'test':
-            
+
             # the path of weights must be appointed
             if self.arg.weights is None:
                 raise ValueError('Please appoint --weights.')
@@ -230,46 +240,65 @@ class Processor(IO):
                 result_dict = dict(
                     zip(self.data_loader['test'].dataset.sample_name,
                         self.result))
-                self.io.save_pkl(result_dict, 'test_result_%.3d.pkl'% (epoch + 1))
+                self.io.save_pkl(result_dict, 'test_result_%.3d.pkl' % (epoch + 1))
 
     @staticmethod
     def get_parser(add_help=False):
         # parameter priority: command line > config > default
-        parser = argparse.ArgumentParser( add_help=add_help, description='Base Processor')
+        parser = argparse.ArgumentParser(add_help=add_help, description='Base Processor')
 
-        parser.add_argument('-w', '--work_dir', default='./work_dir/tmp', help='the work folder for storing results')
+        parser.add_argument('-w', '--work_dir', default='./work_dir/tmp',
+                            help='the work folder for storing results')
         parser.add_argument('-c', '--config', default=None, help='path to the configuration file')
 
         # processor
         parser.add_argument('--phase', default='train', help='must be train or test')
-        parser.add_argument('--save_result', type=str2bool, default=True, help='if ture, the output of the model will be stored')
-        parser.add_argument('--start_epoch', type=int, default=0, help='start training from which epoch')
-        parser.add_argument('--num_epoch', type=int, default=80, help='stop training in which epoch')
+        parser.add_argument('--save_result', type=str2bool, default=True,
+                            help='if ture, the output of the model will be stored')
+        parser.add_argument('--start_epoch', type=int, default=0,
+                            help='start training from which epoch')
+        parser.add_argument('--num_epoch', type=int, default=80,
+                            help='stop training in which epoch')
         parser.add_argument('--use_gpu', type=str2bool, default=True, help='use GPUs or not')
-        parser.add_argument('--device', type=int, default=0, nargs='+', help='the indexes of GPUs for training or testing')
+        parser.add_argument('--device', type=int, default=0, nargs='+',
+                            help='the indexes of GPUs for training or testing')
 
         # visualize and debug
-        parser.add_argument('--log_interval', type=int, default=100, help='the interval for printing messages (#iteration)')
-        parser.add_argument('--save_interval', type=int, default=10, help='the interval for storing models (#epoch)')
-        parser.add_argument('--eval_interval', type=int, default=5, help='the interval for evaluating models (#epoch)')
+        parser.add_argument('--log_interval', type=int, default=50,
+                            help='the interval for printing messages (#iteration)')
+        parser.add_argument('--save_interval', type=int, default=10,
+                            help='the interval for storing models (#epoch)')
+        parser.add_argument('--eval_interval', type=int, default=5,
+                            help='the interval for evaluating models (#epoch)')
         parser.add_argument('--save_log', type=str2bool, default=True, help='save logging or not')
         parser.add_argument('--print_log', type=str2bool, default=True, help='print logging or not')
-        parser.add_argument('--pavi_log', type=str2bool, default=False, help='logging on pavi or not')
+        parser.add_argument('--pavi_log', type=str2bool, default=False,
+                            help='logging on pavi or not')
+        parser.add_argument('--disable_wandb', default=False, action='store_true',
+                            help='do not visualize with wandb')
 
         # feeder
-        parser.add_argument('--train_feeder', default='feeder.feeder', help='train data loader will be used')
-        parser.add_argument('--test_feeder', default='feeder.feeder', help='test data loader will be used')
-        parser.add_argument('--num_worker', type=int, default=4, help='the number of worker per gpu for data loader')
-        parser.add_argument('--train_feeder_args', action=DictAction, default=dict(), help='the arguments of data loader for training')
-        parser.add_argument('--test_feeder_args', action=DictAction, default=dict(), help='the arguments of data loader for test')
+        parser.add_argument('--train_feeder', default='feeder.feeder',
+                            help='train data loader will be used')
+        parser.add_argument('--test_feeder', default='feeder.feeder',
+                            help='test data loader will be used')
+        parser.add_argument('--num_worker', type=int, default=4,
+                            help='the number of worker per gpu for data loader')
+        parser.add_argument('--train_feeder_args', action=DictAction,
+                            default=dict(), help='the arguments of data loader for training')
+        parser.add_argument('--test_feeder_args', action=DictAction,
+                            default=dict(), help='the arguments of data loader for test')
         parser.add_argument('--batch_size', type=int, default=256, help='training batch size')
         parser.add_argument('--test_batch_size', type=int, default=256, help='test batch size')
         parser.add_argument('--debug', action="store_true", help='less data, faster loading')
 
         # model
         parser.add_argument('--model', default=None, help='the model will be used')
-        parser.add_argument('--model_args', action=DictAction, default=dict(), help='the arguments of model')
-        parser.add_argument('--weights', default=None, help='the weights for network initialization')
-        parser.add_argument('--ignore_weights', type=str, default=[], nargs='+', help='the name of weights which will be ignored in the initialization')
+        parser.add_argument('--model_args', action=DictAction,
+                            default=dict(), help='the arguments of model')
+        parser.add_argument('--weights', default=None,
+                            help='the weights for network initialization')
+        parser.add_argument('--ignore_weights', type=str, default=[], nargs='+',
+                            help='the name of weights which will be ignored in the initialization')
 
         return parser

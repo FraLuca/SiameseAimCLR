@@ -13,6 +13,7 @@ from torchlight import str2bool
 from torchlight import DictAction
 from torchlight import import_class
 
+
 class IO():
     """
         IO Processor
@@ -90,14 +91,16 @@ class IO():
     @staticmethod
     def get_parser(add_help=False):
         # parameter priority: command line > config > default
-        parser = argparse.ArgumentParser( add_help=add_help, description='IO Processor')
+        parser = argparse.ArgumentParser(add_help=add_help, description='IO Processor')
 
-        parser.add_argument('-w', '--work_dir', default='./work_dir/levi', help='the work folder for storing results')
+        parser.add_argument('-w', '--work_dir', default='./work_dir/levi',
+                            help='the work folder for storing results')
         parser.add_argument('-c', '--config', default=None, help='path to the configuration file')
 
         # processor
         parser.add_argument('--use_gpu', type=str2bool, default=True, help='use GPUs or not')
-        parser.add_argument('--device', type=int, default=0, nargs='+', help='the indexes of GPUs for training or testing')
+        parser.add_argument('--device', type=int, default=0, nargs='+',
+                            help='the indexes of GPUs for training or testing')
 
         # visualize and debug
         parser.add_argument('--print_log', type=str2bool, default=True, help='print logging or not')
@@ -105,8 +108,11 @@ class IO():
 
         # model
         parser.add_argument('--model', default=None, help='the model will be used')
-        parser.add_argument('--model_args', action=DictAction, default=dict(), help='the arguments of model')
-        parser.add_argument('--weights', default=None, help='the weights for network initialization')
-        parser.add_argument('--ignore_weights', type=str, default=[], nargs='+', help='the name of weights which will be ignored in the initialization')
+        parser.add_argument('--model_args', action=DictAction,
+                            default=dict(), help='the arguments of model')
+        parser.add_argument('--weights', default=None,
+                            help='the weights for network initialization')
+        parser.add_argument('--ignore_weights', type=str, default=[], nargs='+',
+                            help='the name of weights which will be ignored in the initialization')
 
         return parser
