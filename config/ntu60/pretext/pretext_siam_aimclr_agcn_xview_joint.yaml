@@ -1,0 +1,49 @@
+work_dir: ./checkpoints/agcn
+
+# feeder
+train_feeder: feeder.ntu_feeder.Feeder_triple
+train_feeder_args:
+  data_path: ./data/ntu60_aimclr/ntu60_frame50/xview/train_position.npy
+  label_path: ./data/ntu60_aimclr/ntu60/xview/train_label.pkl
+  shear_amplitude: 0.5
+  temperal_padding_ratio: 6
+  mmap: True
+
+# model
+model: net.siam_aimclr.SiameseAimCLR
+model_args:
+  base_encoder: net.agcn.Model
+  pretrain: True
+  feature_dim: 128
+  momentum: 0.999
+  mlp: True
+  in_channels: 3
+  # hidden_channels: 64 # 1/4 x channels of standard stgcn
+  hidden_dim: 256
+  num_class: 60
+  # dropout: 0.5
+  proj_depth: 2
+  graph_args:
+    labeling_mode: 'spatial'
+  edge_importance_weighting: False
+
+# optim
+nesterov: False
+weight_decay: 1e-4
+base_lr: 0.01
+optimizer: SGD
+lr_scheduler: cosine
+step: [80, 150]
+
+# training
+device: [0,1]
+batch_size: 256
+test_batch_size: 128
+num_epoch: 300
+start_epoch: 0
+stream: 'joint'
+
+# log
+save_interval: 25
+eval_interval: -1
+disable_wandb: False

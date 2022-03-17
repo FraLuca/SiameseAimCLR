@@ -7,41 +7,68 @@ from torchlight import import_class
 class SiameseAimCLR(nn.Module):
     def __init__(self, base_encoder=None, pretrain=True, feature_dim=128,
                  momentum=0.999, mlp=True, in_channels=3, hidden_channels=64,
-                 hidden_dim=256, num_class=60, dropout=0.5,
+                 hidden_dim=256, num_class=60, dropout=0.5, proj_depth=3,
                  graph_args={'layout': 'ntu-rgb+d', 'strategy': 'spatial'},
                  edge_importance_weighting=True, **kwargs):
         """
-        K: queue size; number of negative keys (default: 32768)
         m: momentum of updating key encoder (default: 0.999)
-        T: softmax temperature (default: 0.07)
         """
         super().__init__()
+        encoder_type = base_encoder
         base_encoder = import_class(base_encoder)
         self.pretrain = pretrain
 
         if not self.pretrain:
-            self.encoder_q = base_encoder(in_channels=in_channels, hidden_channels=hidden_channels,
-                                          hidden_dim=hidden_dim, num_class=num_class,
-                                          dropout=dropout, graph_args=graph_args,
-                                          edge_importance_weighting=edge_importance_weighting,
-                                          **kwargs)
+            if 'st_gcn' in encoder_type:
+                self.encoder_q = base_encoder(in_channels=in_channels, hidden_channels=hidden_channels,
+                                              hidden_dim=hidden_dim, num_class=num_class,
+                                              dropout=dropout, graph_args=graph_args,
+                                              edge_importance_weighting=edge_importance_weighting,
+                                              **kwargs)
+            elif 'agcn' in encoder_type:
+                self.encoder_q = base_encoder(
+                    in_channels=in_channels, num_class=num_class, graph_args=graph_args)
+
+            elif 'stsgcn' in encoder_type:
+                self.encoder_q = base_encoder(input_channels=in_channels, input_time_frame=50, st_gcnn_dropout=dropout,
+                                              joints_to_consider=25, hidden_dim=hidden_dim, num_class=num_class)
+
+            else:
+                raise ValueError()
+
         else:
             self.m = momentum
 
-            self.encoder_q = base_encoder(in_channels=in_channels, hidden_channels=hidden_channels,
-                                          hidden_dim=hidden_dim, num_class=feature_dim,
-                                          dropout=dropout, graph_args=graph_args,
-                                          edge_importance_weighting=edge_importance_weighting,
-                                          **kwargs)
-            self.encoder_k = base_encoder(in_channels=in_channels, hidden_channels=hidden_channels,
-                                          hidden_dim=hidden_dim, num_class=feature_dim,
-                                          dropout=dropout, graph_args=graph_args,
-                                          edge_importance_weighting=edge_importance_weighting,
-                                          **kwargs)
+            if 'st_gcn' in encoder_type:
+                self.encoder_q = base_encoder(in_channels=in_channels, hidden_channels=hidden_channels,
+                                              hidden_dim=hidden_dim, num_class=feature_dim,
+                                              dropout=dropout, graph_args=graph_args,
+                                              edge_importance_weighting=edge_importance_weighting,
+                                              **kwargs)
+                self.encoder_k = base_encoder(in_channels=in_channels, hidden_channels=hidden_channels,
+                                              hidden_dim=hidden_dim, num_class=feature_dim,
+                                              dropout=dropout, graph_args=graph_args,
+                                              edge_importance_weighting=edge_importance_weighting,
+                                              **kwargs)
+
+            elif 'agcn' in encoder_type:
+                self.encoder_q = base_encoder(
+                    in_channels=in_channels, num_class=feature_dim, graph_args=graph_args)
+                self.encoder_k = base_encoder(
+                    in_channels=in_channels, num_class=feature_dim, graph_args=graph_args)
+
+            elif 'stsgcn' in encoder_type:
+                self.encoder_q = base_encoder(input_channels=in_channels, input_time_frame=50, st_gcnn_dropout=dropout,
+                                              joints_to_consider=25, hidden_dim=hidden_dim, num_class=feature_dim)
+                self.encoder_k = base_encoder(input_channels=in_channels, input_time_frame=50, st_gcnn_dropout=dropout,
+                                              joints_to_consider=25, hidden_dim=hidden_dim, num_class=feature_dim)
+
+            else:
+                raise ValueError()
 
             if mlp:  # hack: brute-force replacement
-                self.add_projector(self.encoder_q, 2)
-                self.add_projector(self.encoder_k, 2)
+                self.add_projector(self.encoder_q, proj_depth)
+                self.add_projector(self.encoder_k, proj_depth)
 
             for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
                 param_k.data.copy_(param_q.data)  # initialize
@@ -53,22 +80,20 @@ class SiameseAimCLR(nn.Module):
                                            nn.ReLU(inplace=True),  # hidden layer
                                            nn.Linear(pred_hidden_dim, feature_dim))  # output layer
 
-    def add_projector(self, encoder=None, num_layers=2):
+    def add_projector(self, encoder=None, num_layers=3):
         feature_dim, dim_mlp = encoder.fc.weight.shape
 
-        basic_block = [nn.Linear(dim_mlp, dim_mlp, bias=False),
-                       nn.BatchNorm1d(dim_mlp),
-                       nn.ReLU(inplace=True)]
-
         all_layers = []
-        for _ in range(num_layers):
-            all_layers += basic_block
+        for _ in range(num_layers-1):
+            all_layers += [nn.Linear(dim_mlp, dim_mlp, bias=False),
+                           nn.BatchNorm1d(dim_mlp),
+                           nn.ReLU(inplace=True)]
 
         # all_layers += [encoder.fc, nn.BatchNorm1d(feature_dim)]
         all_layers += [encoder.fc]
         encoder.fc = nn.Sequential(*all_layers)
 
-    @torch.no_grad()
+    @ torch.no_grad()
     def _momentum_update_key_encoder(self):
         """
         Momentum update of the key encoder

@@ -4,6 +4,7 @@ import yaml
 import math
 import numpy as np
 import wandb
+import time
 
 # torch
 import torch
@@ -43,13 +44,14 @@ class PT_Processor(Processor):
         self.model = self.io.load_model(self.arg.model,
                                         **(self.arg.model_args))
         self.model.apply(weights_init)
-        print(self.model)
         self.loss = nn.CrossEntropyLoss()
         self.re_criterion = torch.nn.L1Loss(reduction='none')
         self.sim_loss = CosineSimLoss()
         if not self.disable_wandb:
             wandb.init(project="aimclr", group="dev", config=self.arg)
             wandb.watch(self.model)
+            time.sleep(3)
+        print(self.model)
 
     def load_lr(self):
         self.arg.base_lr = self.arg.base_lr * (self.arg.batch_size / 512)
@@ -81,11 +83,11 @@ class PT_Processor(Processor):
             raise ValueError()
         self.lr = self.arg.base_lr
 
-    def adjust_lr(self):
+    def adjust_lr_new(self):
         self.scheduler.step()
         self.lr = self.scheduler.get_lr()[0]
 
-    def adjust_lr_old(self):
+    def adjust_lr(self):
         if self.arg.optimizer == 'SGD' and self.arg.step:
             lr = self.arg.base_lr * (
                 0.1**np.sum(self.meta_info['epoch'] > np.array(self.arg.step)))

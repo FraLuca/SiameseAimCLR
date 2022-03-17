@@ -30,7 +30,7 @@ class AimCLR_Processor(PT_Processor):
 
     def train(self, epoch):
         self.model.train()
-        # self.adjust_lr()
+        self.adjust_lr()
         loader = self.data_loader['train']
         loss_value = []
 

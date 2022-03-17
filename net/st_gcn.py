@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from net.utils.tgcn import ConvTemporalGraphical
-from net.utils.graph import Graph
+from net.utils.graph_stgcn import Graph
 from net.att_drop import Simam_Drop
 
 
@@ -44,11 +44,10 @@ class Model(nn.Module):
         if edge_importance_weighting:
             self.edge_importance = nn.ParameterList([
                 nn.Parameter(torch.ones(self.A.size()))
-                for i in self.st_gcn_networks
+                for _ in self.st_gcn_networks
             ])
         else:
             self.edge_importance = [1] * len(self.st_gcn_networks)
-        
 
     def forward(self, x, drop=False):
 
@@ -167,7 +166,7 @@ class st_gcn(nn.Module):
                 nn.BatchNorm2d(out_channels),
             )
 
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU(inplace=True)  # PReLU
 
     def forward(self, x, A):
 

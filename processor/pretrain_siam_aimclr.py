@@ -19,6 +19,7 @@ class SiameseAimCLR_Processor(PT_Processor):
 
     def train(self, epoch):
         self.model.train()
+        self.adjust_lr()
         loader = self.data_loader['train']
         loss_value = []
 
@@ -80,9 +81,20 @@ class SiameseAimCLR_Processor(PT_Processor):
             loss_3 = self.sim_loss(q_extreme_drop, k).mean()
             loss = (loss_1 + loss_2 + loss_3) / 3.
 
+            # breakpoint in case of loss NaN
+            if loss.item() != loss.item():
+                # for name, param in self.model.module.encoder_q.named_parameters():
+                #     print(name, "\n", param)
+                
+                for name, param in self.model.module.encoder_q.named_parameters():
+                    print(name, "-->", any(param.flatten() > 10**12))
+
+                breakpoint()
+
             # backward
             self.optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0, norm_type=2)
             self.optimizer.step()
 
             # statistics
@@ -96,7 +108,7 @@ class SiameseAimCLR_Processor(PT_Processor):
             if not self.disable_wandb:
                 wandb.log(dict(loss=loss.item()))
 
-        self.adjust_lr()
+        # self.adjust_lr()
         self.epoch_info['train_mean_loss'] = np.mean(loss_value)
         self.train_writer.add_scalar('loss', self.epoch_info['train_mean_loss'], epoch)
         self.show_epoch_info()

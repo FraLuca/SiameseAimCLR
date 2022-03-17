@@ -62,7 +62,7 @@ class Processor(IO):
         self.load_data()
         self.load_lr()
         self.load_optimizer()
-        self.load_scheduler()
+        # self.load_scheduler()
 
         self.global_step = 0
 

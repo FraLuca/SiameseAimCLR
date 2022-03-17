@@ -1,7 +1,8 @@
 work_dir: ./checkpoints/linear_joint_xview
 
-weights: ./checkpoints/byol_aimclr_64_channels/epoch125_model.pt
+weights: ./checkpoints/agcn/epoch50_model.pt
 ignore_weights: [encoder_q.fc, encoder_k, queue, predictor]
+
 
 # feeder
 train_feeder: feeder.ntu_feeder.Feeder_single
@@ -22,7 +23,7 @@ test_feeder_args:
 # model
 model: net.siam_aimclr.SiameseAimCLR
 model_args:
-  base_encoder: net.st_gcn.Model
+  base_encoder: net.agcn.Model
   pretrain: False
   # feature_dim: 128
   # queue_size: 32768
@@ -30,28 +31,27 @@ model_args:
   # Temperature: 0.07
   # mlp: True
   in_channels: 3
-  hidden_channels: 64 # 16
+  # hidden_channels: 64 # 16
   hidden_dim: 256
   num_class: 60
-  dropout: 0.5
+  # dropout: 0.5
   # proj_depth: 3
   graph_args:
-    layout: 'ntu-rgb+d'
-    strategy: 'spatial'
+    labeling_mode: 'spatial'
   edge_importance_weighting: False
 
 # optim
 nesterov: False
 weight_decay: 0.0
-base_lr: 0.5
+base_lr: 0.05
 optimizer: SGD
-step: [10, 40, 60] # [10, 60, 90]
+step: [30, 60] #[10, 60, 90]
 
 # training
 device: [0,1]
 batch_size: 256
 test_batch_size: 256
-num_epoch: 80
+num_epoch: 100
 stream: 'joint'
 
 # log
