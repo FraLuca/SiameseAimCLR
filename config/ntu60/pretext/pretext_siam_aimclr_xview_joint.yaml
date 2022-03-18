@@ -1,4 +1,4 @@
-work_dir: ./checkpoints/prova
+work_dir: ./checkpoints/debug_stgcn
 
 # feeder
 train_feeder: feeder.ntu_feeder.Feeder_triple
@@ -18,14 +18,15 @@ model_args:
   momentum: 0.999
   mlp: True
   in_channels: 3
-  hidden_channels: 16 # 1/4 x channels of standard stgcn
+  hidden_channels: 64 # 1/4 x channels of standard stgcn
   hidden_dim: 1024
   num_class: 60
   dropout: 0.5
+  proj_depth: 2
   graph_args:
     layout: 'ntu-rgb+d'
     strategy: 'spatial'
-  edge_importance_weighting: True
+  edge_importance_weighting: False
 
 # optim
 nesterov: False
@@ -33,17 +34,17 @@ weight_decay: 1e-4
 base_lr: 0.1
 optimizer: SGD
 lr_scheduler: cosine
-step: [1, 80, 130]
+step: [80, 150]
 
 # training
 device: [0,1]
-batch_size: 360
+batch_size: 512
 test_batch_size: 128
-num_epoch: 250
+num_epoch: 300
 start_epoch: 0
 stream: 'joint'
 
 # log
-save_interval: 25
+save_interval: 1
 eval_interval: -1
 disable_wandb: False
