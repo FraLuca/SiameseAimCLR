@@ -2,3 +2,4 @@ opencv_python
 PyYAML
 h5py
 tensorboardX
+wandb
