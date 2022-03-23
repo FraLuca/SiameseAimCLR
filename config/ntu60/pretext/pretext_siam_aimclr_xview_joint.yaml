@@ -1,4 +1,4 @@
-work_dir: ./checkpoints/debug_stgcn
+work_dir: ./checkpoints/stgcn_2048_256
 
 # feeder
 train_feeder: feeder.ntu_feeder.Feeder_triple
@@ -14,19 +14,19 @@ model: net.siam_aimclr.SiameseAimCLR
 model_args:
   base_encoder: net.st_gcn.Model
   pretrain: True
-  feature_dim: 1024
   momentum: 0.999
   mlp: True
   in_channels: 3
-  hidden_channels: 64 # 1/4 x channels of standard stgcn
+  hidden_channels: 16
   hidden_dim: 1024
+  feature_dim: 256
   num_class: 60
   dropout: 0.5
   proj_depth: 2
   graph_args:
     layout: 'ntu-rgb+d'
     strategy: 'spatial'
-  edge_importance_weighting: False
+  edge_importance_weighting: True
 
 # optim
 nesterov: False
@@ -37,14 +37,14 @@ lr_scheduler: cosine
 step: [80, 150]
 
 # training
-device: [0,1]
-batch_size: 512
+device: [0,4]
+batch_size: 420
 test_batch_size: 128
 num_epoch: 300
 start_epoch: 0
 stream: 'joint'
 
 # log
-save_interval: 1
+save_interval: 25
 eval_interval: -1
 disable_wandb: False

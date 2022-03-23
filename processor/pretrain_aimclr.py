@@ -115,8 +115,10 @@ class AimCLR_Processor(PT_Processor):
             self.show_iter_info()
             self.meta_info['iter'] += 1
             self.train_log_writer(epoch)
+            # log on wandb
+            if not self.disable_wandb:
+                wandb.log(dict(loss=loss.item()))
 
-        self.scheduler.step(epoch)
         self.epoch_info['train_mean_loss'] = np.mean(loss_value)
         self.train_writer.add_scalar('loss', self.epoch_info['train_mean_loss'], epoch)
         self.show_epoch_info()
