@@ -1,13 +1,13 @@
-work_dir: ./checkpoints/linear_motion_xview
-weights: ./checkpoints/aimclr_motion/epoch300_model.pt
-ignore_weights: [encoder_q.fc, encoder_k, queue]
+work_dir: ./checkpoints/linear_byol_aimclr_joint_xview
+weights: ./checkpoints/aimclr_byol/epoch100_model.pt
+ignore_weights: [online_encoder.projector, target_encoder, online_predictor, net]
 
 # training
 device: [4]
-batch_size: 256
+batch_size: 512
 test_batch_size: 128
 num_epoch: 100
-stream: 'motion'   # joint | motion | bone
+stream: 'joint'   # joint | motion | bone
 
 # feeder
 train_feeder: feeder.ntu_feeder.Feeder_single
@@ -26,19 +26,21 @@ test_feeder_args:
   mmap: True
 
 # model
-model: net.aimclr.AimCLR
+model: net.siam_byol.BYOLAimCLR
 model_args:
-  base_encoder: net.st_gcn.Model
+  base_encoder: net.st_gcn_no_proj.Model
   pretrain: False
-  # feature_dim: 128
-  # queue_size: 32768
-  # momentum: 0.999
-  # Temperature: 0.07
-  # mlp: True
+  time_dim: 50
+  spat_dim: 25 
   in_channels: 3
   hidden_channels: 64
-  hidden_dim: 1024
-  num_class: 60
+  out_channels: 1024
+  hidden_layer: -1
+  projection_hidden_size: [60]
+  # projection_size: 60
+  # predictor_hidden_size: 1024
+  moving_average_decay: 0.999
+  use_momentum: True
   dropout: 0.5
   graph_args:
     layout: 'ntu-rgb+d'
@@ -48,9 +50,9 @@ model_args:
 # optim
 nesterov: False
 weight_decay: 0.0
-base_lr: 3.
+base_lr: 0.5
 optimizer: SGD
-step: [80]
+step: [30, 60]
 
 # log
 save_interval: -1

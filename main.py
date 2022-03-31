@@ -40,7 +40,11 @@ if __name__ == '__main__':
         'processor.pretrain_siam_aimclr.SiameseAimCLR_Processor')
     processors['pretrain_siam_neg_aimclr'] = import_class(
         'processor.pretrain_siam_neg_aimclr.SiameseNegAimCLR_Processor')
+    processors['pretrain_byol_aimclr'] = import_class(
+        'processor.pretrain_byol_aimclr.BYOLAimCLR_Processor')
     processors['linear_evaluation'] = import_class('processor.linear_evaluation.LE_Processor')
+    processors['linear_evaluation_byol'] = import_class(
+        'processor.linear_evaluation_byol.LE_Processor')
 
     # add sub-parser
     subparsers = parser.add_subparsers(dest='processor')

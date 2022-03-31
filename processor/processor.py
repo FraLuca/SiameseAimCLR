@@ -58,6 +58,7 @@ class Processor(IO):
 
         self.load_model()
         self.load_weights()
+        # add new projector
         self.gpu()
         self.load_data()
         self.load_lr()
@@ -169,6 +170,13 @@ class Processor(IO):
         if print_flag:
             self.io.print_log(net)
         self.io.print_log('[Network] Total number of parameters : %.3f M' % (num_params / 1e6))
+        self.io.print_log('-----------------------------------------------')
+
+        num_trainable_params = 0
+        for param in net.parameters():
+            if param.requires_grad == True:
+                num_trainable_params += param.numel() 
+        self.io.print_log('[Network] Num of trainable parameters : %.3f M' % (num_trainable_params / 1e6))
         self.io.print_log('-----------------------------------------------')
 
     def start(self):

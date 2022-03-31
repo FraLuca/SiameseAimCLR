@@ -5,11 +5,11 @@ from tqdm import tqdm
 # Linear
 print('-' * 20 + 'Linear Eval' + '-' * 20)
 
-joint_path = '/data/gty/AAAI_github/ntu60_cv/aimclr_joint/linear_eval/'
-bone_path = '/data/gty/AAAI_github/ntu60_cv/aimclr_bone/linear_eval/'
-motion_path = '/data/gty/AAAI_github/ntu60_cv/aimclr_motion/linear_eval/'
+joint_path = './checkpoints/linear_joint_xview/'
+bone_path = './checkpoints/linear_bone_xview/'
+motion_path = './checkpoints/linear_motion_xview/'
 
-label = open('/data/gty/action_dataset/ntu60_frame50/xview/val_label.pkl', 'rb')
+label = open('./data/ntu60_aimclr/ntu60/xview/val_label.pkl', 'rb')
 label = np.array(pickle.load(label))
 r1 = open(joint_path + 'test_result.pkl', 'rb')
 r1 = list(pickle.load(r1).items())

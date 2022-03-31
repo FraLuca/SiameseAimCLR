@@ -82,10 +82,10 @@ class SiameseNegAimCLR(nn.Module):
                                            nn.ReLU(inplace=True),  # hidden layer
                                            nn.Linear(pred_hidden_dim, feature_dim))  # output layer
 
-            self.register_buffer("avg_negative", torch.FloatTensor(feature_dim, 1).uniform_(-0.01, 0.01))
+            self.register_buffer("avg_negative", torch.FloatTensor(
+                feature_dim, 1).uniform_(-0.01, 0.01))
             self.avg_negative = F.normalize(self.avg_negative, dim=0)
             self.register_buffer("queue_ptr", torch.ones(1, dtype=torch.long))
-
 
     def add_projector(self, encoder=None, num_layers=3):
         feature_dim, dim_mlp = encoder.fc.weight.shape
@@ -100,7 +100,7 @@ class SiameseNegAimCLR(nn.Module):
         all_layers += [encoder.fc]
         encoder.fc = nn.Sequential(*all_layers)
 
-    @ torch.no_grad()
+    @torch.no_grad()
     def _momentum_update_key_encoder(self):
         """
         Momentum update of the key encoder
@@ -108,12 +108,12 @@ class SiameseNegAimCLR(nn.Module):
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
             param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)
 
-    @ torch.no_grad()
+    @torch.no_grad()
     def _update_avg_negative(self, new_neg):
-        breakpoint()
-        self.avg_negative += new_neg.mean(0).unsqueeze(1) / self.queue_ptr
+        self.avg_negative = self.avg_negative * self.m + \
+            new_neg.mean(0).unsqueeze(1) * (1. - self.m)
 
-    @ torch.no_grad()
+    @torch.no_grad()
     def _update_queue_ptr(self):
         if self.queue_ptr < self.queue_size:
             self.queue_ptr += 1
@@ -139,6 +139,7 @@ class SiameseNegAimCLR(nn.Module):
         q_extreme = F.normalize(q_extreme, dim=1)
         q_extreme_drop = F.normalize(q_extreme_drop, dim=1)
 
+        # pass through predictor
         q = self.predictor(q)
         q_extreme = self.predictor(q_extreme)
         q_extreme_drop = self.predictor(q_extreme_drop)
@@ -153,9 +154,9 @@ class SiameseNegAimCLR(nn.Module):
         # Compute logits of normally augmented query using Einstein sum
         # positive logits: Nx1
         l_pos = torch.einsum('nc,nc->n', [q, k]).unsqueeze(-1)
-        # negative logits: NxK
+        # negative logits: Nx1
         l_neg = torch.einsum('nc,ck->nk', [q, self.avg_negative.clone().detach()])
-        # logits: Nx(1+K)
+        # logits: Nx2
         logits = torch.cat([l_pos, l_neg], dim=1)
         # apply temperature
         logits /= self.T

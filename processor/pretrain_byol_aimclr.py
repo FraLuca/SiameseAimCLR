@@ -23,7 +23,7 @@ from .processor import Processor
 from .pretrain import PT_Processor
 
 
-class SiameseNegAimCLR_Processor(PT_Processor):
+class BYOLAimCLR_Processor(PT_Processor):
     """
         Processor for AimCLR Pre-training.
     """
@@ -81,25 +81,14 @@ class SiameseNegAimCLR_Processor(PT_Processor):
                 raise ValueError
 
             # forward
-            if epoch <= self.arg.mining_epoch:
-                output1, target1, output2, output3, target2 = self.model(data1, data2, data3)
-                loss1 = self.loss(output1, target1)
-                loss2 = -torch.mean(torch.sum(torch.log(output2) * target2, dim=1))  # DDM loss
-                loss3 = -torch.mean(torch.sum(torch.log(output3) * target2, dim=1))  # DDM loss
-                loss = loss1 + (loss2 + loss3) / 2.
-            else:
-                output1, mask, output2, output3, target2 = self.model(
-                    data1, data2, data3, nnm=True, topk=self.arg.topk)
-                loss1 = - (F.log_softmax(output1, dim=1) * mask).sum(1) / mask.sum(1)
-                loss1 = loss1.mean()
-                loss2 = -torch.mean(torch.sum(torch.log(output2) * target2, dim=1))  # DDM loss
-                loss3 = -torch.mean(torch.sum(torch.log(output3) * target2, dim=1))  # DDM loss
-                loss = loss1 + (loss2 + loss3) / 2.
+            loss1, loss2, loss3 = self.model(data1, data2, data3)
+            loss = loss1.mean() + (loss2.mean() + loss3.mean()) / 2. # the mean does the average per each gpu
 
             # backward
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+            self.model.module.update_moving_average()
             torch.autograd.set_detect_anomaly(True)
 
             # statistics
