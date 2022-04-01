@@ -45,17 +45,10 @@ def set_requires_grad(model, val):
 # loss fn
 
 
-def loss_fn(x, y, loss_name='cosine_sim'):
-
-    if loss_name == 'cosine_sim':
-        x = F.normalize(x, dim=-1, p=2)
-        y = F.normalize(y, dim=-1, p=2)
-        return 2 - 2 * (x * y).sum(dim=-1)
-
-    elif loss_name == 'mse':
-        loss = nn.MSELoss()
-        return loss(x, y).mean(dim=-1)
-    
+def loss_fn(x, y):
+    x = F.normalize(x, dim=-1, p=2)
+    y = F.normalize(y, dim=-1, p=2)
+    return 2 - 2 * (x * y).sum(dim=-1)
 
 # augmentation utils
 
@@ -195,20 +188,18 @@ class NetWrapper(nn.Module):
 
 
 # main class
-class BYOLAimCLR(nn.Module):
+class SimSiamAimCLR(nn.Module):
     def __init__(
         self, base_encoder=None, pretrain=True,
         time_dim=50, spat_dim=25, in_channels=3, hidden_channels=64, out_channels=1024,  # encoder parameters
         # projector and predictor parameters
         hidden_layer=-1, projection_hidden_size=[4096, 1024], predictor_hidden_size=[1024,1024],
-        moving_average_decay=0.999, use_momentum=True,  # momentum update parameters
+        # moving_average_decay=0.999, use_momentum=True,  # momentum update parameters
         # other encoder parameters
-        dropout=0.5, graph_args={'layout': 'ntu-rgb+d', 'strategy': 'spatial'}, edge_importance_weighting=True, 
-        loss_name = 'cosine_sim', **kwargs
+        dropout=0.5, graph_args={'layout': 'ntu-rgb+d', 'strategy': 'spatial'}, edge_importance_weighting=True, **kwargs
     ):
         super().__init__()
 
-        self.loss_name=loss_name
         encoder_type = base_encoder
         base_encoder = import_class(base_encoder)
 
@@ -232,32 +223,32 @@ class BYOLAimCLR(nn.Module):
 
             self.online_predictor = MLP(projection_hidden_size[-1], predictor_hidden_size)
 
-            self.use_momentum = use_momentum
-            self.target_encoder = None
-            self.target_ema_updater = EMA(moving_average_decay)
+            # self.use_momentum = use_momentum
+            # self.target_encoder = None
+            # self.target_ema_updater = EMA(moving_average_decay)
 
         # get device of network and make wrapper same device
         device = get_module_device(net)
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters
-        self.forward(torch.randn(2, in_channels, time_dim, spat_dim, 2, device=device), torch.randn(
-            2, in_channels, time_dim, spat_dim, 2, device=device), torch.randn(2, in_channels, time_dim, spat_dim, 2, device=device))
+        # self.forward(torch.randn(2, in_channels, time_dim, spat_dim, 2, device=device), torch.randn(
+        #     2, in_channels, time_dim, spat_dim, 2, device=device), torch.randn(2, in_channels, time_dim, spat_dim, 2, device=device))
 
-    @singleton('target_encoder')
-    def _get_target_encoder(self):
-        target_encoder = copy.deepcopy(self.online_encoder)
-        set_requires_grad(target_encoder, False)
-        return target_encoder
+    # @singleton('target_encoder')
+    # def _get_target_encoder(self):
+    #     target_encoder = copy.deepcopy(self.online_encoder)
+    #     set_requires_grad(target_encoder, False)
+    #     return target_encoder
 
-    def reset_moving_average(self):
-        del self.target_encoder
-        self.target_encoder = None
+    # def reset_moving_average(self):
+    #     del self.target_encoder
+    #     self.target_encoder = None
 
-    def update_moving_average(self):
-        assert self.use_momentum, 'you do not need to update the moving average, since you have turned off momentum for the target encoder'
-        assert self.target_encoder is not None, 'target encoder has not been created yet'
-        update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder)
+    # def update_moving_average(self):
+    #     assert self.use_momentum, 'you do not need to update the moving average, since you have turned off momentum for the target encoder'
+    #     assert self.target_encoder is not None, 'target encoder has not been created yet'
+    #     update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder)
 
     def forward(
         self,
@@ -277,27 +268,25 @@ class BYOLAimCLR(nn.Module):
         online_pred_two = self.online_predictor(online_proj_two)
 
         if image_one_extreme != None:
-            online_proj_one_ext, online_proj_one_ext_drop = self.online_encoder(
-                image_one_extreme, drop=True)
+            online_proj_one_ext, online_proj_one_ext_drop = self.online_encoder(image_one_extreme, drop=True)
             online_pred_one_ext = self.online_predictor(online_proj_one_ext)
             online_pred_one_ext_drop = self.online_predictor(online_proj_one_ext_drop)
 
-        with torch.no_grad():
-            target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
-            target_proj_one = target_encoder(image_one)
-            target_proj_two = target_encoder(image_two)
-            target_proj_one.detach_()
-            target_proj_two.detach_()
 
-            if image_one_extreme != None:
-                target_proj_one_ext, target_proj_one_ext_drop = target_encoder(
-                    image_one_extreme, drop=True)
-                target_proj_one_ext.detach_()
-                target_proj_one_ext_drop.detach_()
+        with torch.no_grad():
+               target_proj_one = online_proj_one.detach().clone()
+               target_proj_two = online_proj_two.detach().clone()
+               target_proj_one_ext = online_proj_one_ext.detach().clone()
+               target_proj_one_ext_drop = online_proj_one_ext_drop.detach().clone()
+
+               target_proj_one.detach_()
+               target_proj_two.detach_()
+               target_proj_one_ext.detach_()
+               target_proj_one_ext_drop.detach_()
 
         # Online VS Target
-        loss_one = loss_fn(online_pred_one, target_proj_two.detach(), loss_name=self.loss_name)
-        loss_two = loss_fn(online_pred_two, target_proj_one.detach(), loss_name=self.loss_name)
+        loss_one = loss_fn(online_pred_one, target_proj_two.detach())
+        loss_two = loss_fn(online_pred_two, target_proj_one.detach())
         loss = loss_one + loss_two
         loss = loss.mean()
 
@@ -305,14 +294,14 @@ class BYOLAimCLR(nn.Module):
         loss_ext_drop = None
         if image_one_extreme != None:
             # Online_Extreme VS Target
-            loss_one_ext = loss_fn(online_pred_one_ext, target_proj_two.detach(), loss_name=self.loss_name)
-            loss_two_ext = loss_fn(online_pred_two, target_proj_one_ext.detach(), loss_name=self.loss_name)
+            loss_one_ext = loss_fn(online_pred_one_ext, online_proj_two.detach())
+            loss_two_ext = loss_fn(online_pred_two, target_proj_one_ext.detach())
             loss_ext = loss_one_ext + loss_two_ext
             loss_ext = loss_ext.mean()
 
             # Online_Extreme_Drop VS Target
-            loss_one_ext_drop = loss_fn(online_pred_one_ext_drop, target_proj_two.detach(), loss_name=self.loss_name)
-            loss_two_ext_drop = loss_fn(online_pred_two, target_proj_one_ext_drop.detach(), loss_name=self.loss_name)
+            loss_one_ext_drop = loss_fn(online_pred_one_ext_drop, online_proj_two.detach())
+            loss_two_ext_drop = loss_fn(online_pred_two, target_proj_one_ext_drop.detach())
             loss_ext_drop = loss_one_ext_drop + loss_two_ext_drop
             loss_ext_drop = loss_ext_drop.mean()
 

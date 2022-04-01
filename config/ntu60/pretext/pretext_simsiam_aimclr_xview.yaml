@@ -10,7 +10,7 @@ train_feeder_args:
   mmap: True
 
 # model
-model: net.siam_byol.BYOLAimCLR
+model: net.simsiam_aimclr.SimSiamAimCLR
 model_args:
   base_encoder: net.st_gcn_no_proj.Model
   pretrain: True
@@ -22,14 +22,13 @@ model_args:
   hidden_layer: -1
   projection_hidden_size: [256, 128]
   predictor_hidden_size: [128, 128]
-  moving_average_decay: 0.999
-  use_momentum: True
+  # moving_average_decay: 0.999
+  # use_momentum: True
   dropout: 0.5
   graph_args:
     layout: 'ntu-rgb+d'
     strategy: 'spatial'
   edge_importance_weighting: True
-  loss_name: 'cosine_sim'   # cosine_sim - mse
 
 # optim
 nesterov: False
