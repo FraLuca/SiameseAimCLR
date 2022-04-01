@@ -45,10 +45,17 @@ def set_requires_grad(model, val):
 # loss fn
 
 
-def loss_fn(x, y):
-    x = F.normalize(x, dim=-1, p=2)
-    y = F.normalize(y, dim=-1, p=2)
-    return 2 - 2 * (x * y).sum(dim=-1)
+def loss_fn(x, y, loss_name='cosine_sim'):
+
+    if loss_name == 'cosine_sim':
+        x = F.normalize(x, dim=-1, p=2)
+        y = F.normalize(y, dim=-1, p=2)
+        return 2 - 2 * (x * y).sum(dim=-1)
+
+    elif loss_name == 'mse':
+        loss = nn.MSELoss()
+        return loss(x, y).mean(dim=-1)
+    
 
 # augmentation utils
 
@@ -196,10 +203,12 @@ class BYOLAimCLR(nn.Module):
         hidden_layer=-1, projection_hidden_size=[4096, 1024], predictor_hidden_size=[1024,1024],
         moving_average_decay=0.999, use_momentum=True,  # momentum update parameters
         # other encoder parameters
-        dropout=0.5, graph_args={'layout': 'ntu-rgb+d', 'strategy': 'spatial'}, edge_importance_weighting=True, **kwargs
+        dropout=0.5, graph_args={'layout': 'ntu-rgb+d', 'strategy': 'spatial'}, edge_importance_weighting=True, 
+        loss_name = 'cosine_sim', **kwargs
     ):
         super().__init__()
 
+        self.loss_name=loss_name
         encoder_type = base_encoder
         base_encoder = import_class(base_encoder)
 
@@ -287,8 +296,8 @@ class BYOLAimCLR(nn.Module):
                 target_proj_one_ext_drop.detach_()
 
         # Online VS Target
-        loss_one = loss_fn(online_pred_one, target_proj_two.detach())
-        loss_two = loss_fn(online_pred_two, target_proj_one.detach())
+        loss_one = loss_fn(online_pred_one, target_proj_two.detach(), loss_name=self.loss_name)
+        loss_two = loss_fn(online_pred_two, target_proj_one.detach(), loss_name=self.loss_name)
         loss = loss_one + loss_two
         loss = loss.mean()
 
@@ -296,14 +305,14 @@ class BYOLAimCLR(nn.Module):
         loss_ext_drop = None
         if image_one_extreme != None:
             # Online_Extreme VS Target
-            loss_one_ext = loss_fn(online_pred_one_ext, target_proj_two.detach())
-            loss_two_ext = loss_fn(online_pred_two, target_proj_one_ext.detach())
+            loss_one_ext = loss_fn(online_pred_one_ext, target_proj_two.detach(), loss_name=self.loss_name)
+            loss_two_ext = loss_fn(online_pred_two, target_proj_one_ext.detach(), loss_name=self.loss_name)
             loss_ext = loss_one_ext + loss_two_ext
             loss_ext = loss_ext.mean()
 
             # Online_Extreme_Drop VS Target
-            loss_one_ext_drop = loss_fn(online_pred_one_ext_drop, target_proj_two.detach())
-            loss_two_ext_drop = loss_fn(online_pred_two, target_proj_one_ext_drop.detach())
+            loss_one_ext_drop = loss_fn(online_pred_one_ext_drop, target_proj_two.detach(), loss_name=self.loss_name)
+            loss_two_ext_drop = loss_fn(online_pred_two, target_proj_one_ext_drop.detach(), loss_name=self.loss_name)
             loss_ext_drop = loss_one_ext_drop + loss_two_ext_drop
             loss_ext_drop = loss_ext_drop.mean()
 
