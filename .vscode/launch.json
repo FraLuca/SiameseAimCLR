@@ -38,9 +38,9 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "pretrain_siam_neg_aimclr",
+                "pretrain_byol_aimclr",
                 "--config",
-                "config/ntu60/pretext/pretext_siam_neg_aimclr_xview.yaml"
+                "config/ntu60/pretext/pretext_byol_aimclr_xview.yaml"
             ]
         }
     ]
