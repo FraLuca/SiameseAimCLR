@@ -94,8 +94,8 @@ class MLP(nn.Module):
         layer_list = []
 
         for idx, next_dim in enumerate(projection_size):
-            
-            if idx == n_layers-1: 
+
+            if idx == n_layers-1:
                 layer_list.append(nn.Linear(dim, next_dim))
             else:
                 layer_list.append(nn.Linear(dim, next_dim))
@@ -193,7 +193,7 @@ class SimSiamAimCLR(nn.Module):
         self, base_encoder=None, pretrain=True,
         time_dim=50, spat_dim=25, in_channels=3, hidden_channels=64, out_channels=1024,  # encoder parameters
         # projector and predictor parameters
-        hidden_layer=-1, projection_hidden_size=[4096, 1024], predictor_hidden_size=[1024,1024],
+        hidden_layer=-1, projection_hidden_size=[4096, 1024], predictor_hidden_size=[1024, 1024],
         # moving_average_decay=0.999, use_momentum=True,  # momentum update parameters
         # other encoder parameters
         dropout=0.5, graph_args={'layout': 'ntu-rgb+d', 'strategy': 'spatial'}, edge_importance_weighting=True, **kwargs
@@ -232,8 +232,8 @@ class SimSiamAimCLR(nn.Module):
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters
-        # self.forward(torch.randn(2, in_channels, time_dim, spat_dim, 2, device=device), torch.randn(
-        #     2, in_channels, time_dim, spat_dim, 2, device=device), torch.randn(2, in_channels, time_dim, spat_dim, 2, device=device))
+        self.forward(torch.randn(2, in_channels, time_dim, spat_dim, 2, device=device), torch.randn(
+            2, in_channels, time_dim, spat_dim, 2, device=device), torch.randn(2, in_channels, time_dim, spat_dim, 2, device=device))
 
     # @singleton('target_encoder')
     # def _get_target_encoder(self):
@@ -268,21 +268,21 @@ class SimSiamAimCLR(nn.Module):
         online_pred_two = self.online_predictor(online_proj_two)
 
         if image_one_extreme != None:
-            online_proj_one_ext, online_proj_one_ext_drop = self.online_encoder(image_one_extreme, drop=True)
+            online_proj_one_ext, online_proj_one_ext_drop = self.online_encoder(
+                image_one_extreme, drop=True)
             online_pred_one_ext = self.online_predictor(online_proj_one_ext)
             online_pred_one_ext_drop = self.online_predictor(online_proj_one_ext_drop)
 
-
         with torch.no_grad():
-               target_proj_one = online_proj_one.detach().clone()
-               target_proj_two = online_proj_two.detach().clone()
-               target_proj_one_ext = online_proj_one_ext.detach().clone()
-               target_proj_one_ext_drop = online_proj_one_ext_drop.detach().clone()
+            target_proj_one = online_proj_one.detach().clone()
+            target_proj_two = online_proj_two.detach().clone()
+            target_proj_one_ext = online_proj_one_ext.detach().clone()
+            target_proj_one_ext_drop = online_proj_one_ext_drop.detach().clone()
 
-               target_proj_one.detach_()
-               target_proj_two.detach_()
-               target_proj_one_ext.detach_()
-               target_proj_one_ext_drop.detach_()
+            target_proj_one.detach_()
+            target_proj_two.detach_()
+            target_proj_one_ext.detach_()
+            target_proj_one_ext_drop.detach_()
 
         # Online VS Target
         loss_one = loss_fn(online_pred_one, target_proj_two.detach())
