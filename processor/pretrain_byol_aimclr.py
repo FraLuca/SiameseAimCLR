@@ -88,7 +88,8 @@ class BYOLAimCLR_Processor(PT_Processor):
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            self.model.module.update_moving_average()
+            if self.arg.model_args['use_momentum']:
+                self.model.module.update_moving_average()
             torch.autograd.set_detect_anomaly(True)
 
             # statistics
