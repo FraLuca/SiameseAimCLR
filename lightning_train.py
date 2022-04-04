@@ -46,7 +46,7 @@ class SelfSupervisedLearner(pl.LightningModule):
         self.model = BYOLAimCLR(base_encoder, **vars(cfg.model_args))
         self.cfg = cfg
 
-        if cfg.resume_from is not None:
+        if cfg.resume_from != 'None':
             print("Resume from checkpoint {} in progress...".format(cfg.resume_from))
             state_dict = torch.load(cfg.resume_from)
             self.model.load_state_dict(state_dict, strict=False)
