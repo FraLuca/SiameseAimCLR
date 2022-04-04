@@ -13,7 +13,7 @@
             "justMyCode": true,
             "args": [
                 "--config",
-                "./config/ntu60/pretext/pretext_byol_nnm_aimclr_xview.yaml"
+                "./config/ntu60/pretext/pretext_byol_aimclr_xview.yaml"
             ]
         },
         {

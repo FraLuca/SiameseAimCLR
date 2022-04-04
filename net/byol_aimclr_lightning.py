@@ -214,14 +214,14 @@ class BYOLAimCLR(nn.Module):
 
         if not self.pretrain:
             net = base_encoder(in_channels=in_channels, hidden_channels=hidden_channels, out_channels=out_channels,
-                                dropout=dropout, graph_args=graph_args,
-                                edge_importance_weighting=edge_importance_weighting, **kwargs)
+                               dropout=dropout, graph_args=graph_args,
+                               edge_importance_weighting=edge_importance_weighting, **kwargs)
             self.online_encoder = NetWrapper(
                 net, projection_hidden_size, layer=hidden_layer)
         else:
             net = base_encoder(in_channels=in_channels, hidden_channels=hidden_channels, out_channels=out_channels,
-                                dropout=dropout, graph_args=graph_args,
-                                edge_importance_weighting=edge_importance_weighting, **kwargs)
+                               dropout=dropout, graph_args=graph_args,
+                               edge_importance_weighting=edge_importance_weighting, **kwargs)
             # self.net = net
             self.online_encoder = NetWrapper(
                 net, projection_hidden_size, layer=hidden_layer)
@@ -264,8 +264,7 @@ class BYOLAimCLR(nn.Module):
     def _dequeue_and_enqueue(self, keys):
         batch_size = keys.shape[0]
         ptr = int(self.queue_ptr)
-        gpu_index = keys.device.index
-        self.queue[:, (ptr + batch_size * gpu_index):(ptr + batch_size * (gpu_index + 1))] = keys.T
+        self.queue[:, ptr:(ptr + batch_size)] = keys.T
 
     @torch.no_grad()
     def update_ptr(self, batch_size):

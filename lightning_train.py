@@ -6,10 +6,15 @@ import yaml
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pathlib import Path
 
 from feeder.ntu_feeder import Feeder_triple
 from net.byol_aimclr_lightning import BYOLAimCLR
 from net.st_gcn_no_proj import Model as STGCN
+
+
+pl.seed_everything(123)
 
 
 def load_config(arg):
@@ -38,8 +43,15 @@ def load_config(arg):
 class SelfSupervisedLearner(pl.LightningModule):
     def __init__(self, base_encoder, cfg):
         super().__init__()
-        self.model = BYOLAimCLR(base_encoder, vars(cfg.model_args))
+        self.model = BYOLAimCLR(base_encoder, **vars(cfg.model_args))
         self.cfg = cfg
+
+        if cfg.resume_from is not None:
+            print("Resume from checkpoint {} in progress...".format(cfg.resume_from))
+            state_dict = torch.load(cfg.resume_from)
+            self.model.load_state_dict(state_dict, strict=False)
+            print("Checkpoint loading completed!")
+
         # log hyperparams to wandb
         self.save_hyperparameters()
 
@@ -128,9 +140,24 @@ class SelfSupervisedLearner(pl.LightningModule):
             self.model.update_moving_average()
 
 
+class PeriodicCheckpoint(ModelCheckpoint):
+    def __init__(self, dirpath: str,  every: int):
+        super().__init__()
+        self.dirpath = dirpath
+        self.every = every
+
+    def on_train_batch_end(
+        self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args, **kwargs
+    ):
+        if pl_module.current_epoch % self.every == 0:
+            assert self.dirpath is not None
+            current = Path(self.dirpath) / f"epoch-{pl_module.current_epoch}.ckpt"
+            trainer.save_checkpoint(current)
+
+
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='byol-lightning-test')
+    parser = argparse.ArgumentParser(description='BYOL AimCLR Training')
     parser.add_argument('-c', '--config', type=str, required=True,
                         default='/data_volume/SiameseAimCLR/config/ntu60/pretext/prova.yaml')
     arg = parser.parse_args()
@@ -142,7 +169,7 @@ if __name__ == '__main__':
                                  cfg.train_feeder_args.label_path)
     train_loader = DataLoader(
         dataset=train_feeder,
-        batch_size=cfg.batch_size,
+        batch_size=cfg.batch_size // len(cfg.device),
         shuffle=True,
         pin_memory=True,    # set True when memory is abundant
         num_workers=mp.cpu_count()//3,
@@ -152,13 +179,15 @@ if __name__ == '__main__':
     wandb_logger = None
     if not cfg.disable_wandb:
         # init wandb logger
-        wandb_logger = WandbLogger(project='byol_aimclr', group='dev')
+        wandb_logger = WandbLogger(project='aimclr', group='dev')
 
     # init self-supervised learner
     model = SelfSupervisedLearner(STGCN, cfg)
 
     if wandb_logger is not None:
         wandb_logger.watch(model, log_freq=10)
+
+    checkpoint_callback = PeriodicCheckpoint(dirpath=cfg.work_dir, every=cfg.save_interval)
 
     # init trainer
     trainer = pl.Trainer(
@@ -169,7 +198,7 @@ if __name__ == '__main__':
         strategy='ddp',
         num_nodes=1,
         logger=wandb_logger,
-        default_root_dir=cfg.work_dir)
+        callbacks=[checkpoint_callback])
 
     # start training
     trainer.fit(model, train_loader)
