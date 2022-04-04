@@ -5,6 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--config",
+                "./config/ntu60/pretext/pretext_byol_nnm_aimclr_xview.yaml"
+            ]
+        },
+        {
             "name": "Linear Eval BYOL",
             "type": "python",
             "request": "launch",
