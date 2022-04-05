@@ -6,6 +6,7 @@ import yaml
 import numpy as np
 
 import pytorch_lightning as pl
+from torchmetrics import Accuracy
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -61,7 +62,7 @@ class SelfSupervisedLearner(pl.LightningModule):
         super().__init__()
         self.model = BYOLAimCLR(base_encoder, **vars(cfg.model_args))
         self.cfg = cfg
-        self.best_result = -1.
+        self.best_top1_acc = 0.
 
         self.load_weights(cfg.weights, cfg.ignore_weights)
 
@@ -82,7 +83,9 @@ class SelfSupervisedLearner(pl.LightningModule):
             self.num_grad_layers += 2
 
         self.loss = nn.CrossEntropyLoss()
-        print(self.model)
+        self.top1_accuracy = Accuracy(top_k=1)
+        self.top5_accuracy = Accuracy(top_k=5)
+        # print(self.model)
 
         # log hyperparams to wandb
         self.save_hyperparameters()
@@ -140,23 +143,7 @@ class SelfSupervisedLearner(pl.LightningModule):
 
         # forward
         output = self.model(None, data, return_projection=True)
-
         return output
-
-    def compute_topk(self, k, result, label):
-        rank = result.argsort()
-        hit_top_k = [l in rank[i, -k:] for i, l in enumerate(label)]
-        accuracy = sum(hit_top_k) * 1.0 / len(hit_top_k)
-        return accuracy
-
-    def compute_best(self, k, result, label):
-        rank = result.argsort()
-        hit_top_k = [l in rank[i, -k:] for i, l in enumerate(label)]
-        accuracy = 100 * sum(hit_top_k) * 1.0 / len(hit_top_k)
-        accuracy = round(accuracy, 5)
-        self.current_result = accuracy
-        if self.best_result <= accuracy:
-            self.best_result = accuracy
 
     def training_step(self, batch, _):
         data, label = batch[0].float(), batch[1].long()
@@ -167,48 +154,51 @@ class SelfSupervisedLearner(pl.LightningModule):
 
     def validation_step(self, batch, _):
         data, label = batch[0].float(), batch[1].long()
-
         output = self.forward(data)
-        self.result_frag.append(output.data.cpu().numpy())
-
         loss = self.loss(output, label)
-        self.loss_value.append(loss.item())
-        self.label_frag.append(label.data.cpu().numpy())
         self.log('val_loss', loss)
+        return {'loss': loss, 'pred': output, 'target': label}
 
-    def on_validation_epoch_start(self) -> None:
-        self.loss_value = []
-        self.result_frag = []
-        self.label_frag = []
-        return super().on_validation_epoch_start()
+    def validation_epoch_end(self, outputs):
 
-    def validation_epoch_end(self, _):
+        top1_acc = 0.
+        top5_acc = 0.
+        loss_epoch = 0.
+
+        for output in outputs:
+            loss = output['loss']
+            acc1 = self.top1_accuracy(output['pred'], output['target'])
+            acc5 = self.top5_accuracy(output['pred'], output['target'])
+            loss_epoch += loss
+            top1_acc += acc1
+            top5_acc += acc5
+
+        loss_epoch = round(loss_epoch.item() / len(outputs), 4)
+        top1_acc = round((top1_acc.item() / len(outputs)) * 100, 2)
+        top5_acc = round((top5_acc.item() / len(outputs)) * 100, 2)
+
+        if top1_acc > self.best_top1_acc:
+            self.best_top1_acc = top1_acc
+
         log_dict = {
-            'eval_mean_loss': np.mean(self.loss_value)
+            'loss_epoch': loss_epoch,
+            'top1_acc': top1_acc,
+            'top5_acc': top5_acc,
+            'best_top1_acc': self.best_top1_acc
         }
 
-        result = np.concatenate(self.result_frag)
-        label = np.concatenate(self.label_frag)
-
-        print("\n\n----- Results epoch {} -----".format(self.current_epoch))
-        for k in [1, 5]:
-            acc = self.compute_topk(k, result, label)
-            log_dict['top{}_acc'.format(k)] = round(acc*100, 2)
-            print('top{}_acc: {}'.format(k, round(acc*100, 2)))
-
-        # self.compute_best(1, result, label)
-        # log_dict['best_top1_acc'] = self.best_result
-        # print('best_top1_acc: {}'.format(round(self.best_result, 2)))
-
-        self.log_dict(log_dict)
-        print()
+        self.log_dict(log_dict, sync_dist=True)
+        self.print("\n----- Results epoch {} -----".format(self.current_epoch))
+        for k, v in log_dict.items():
+            self.print(k, '\t=\t', v)
+        self.print()
 
     def configure_optimizers(self):
         # return torch.optim.Adam(self.parameters(), lr=LR)
         optimizer = torch.optim.SGD(self.parameters(), lr=self.cfg.base_lr, momentum=0.9,
                                     nesterov=self.cfg.nesterov, weight_decay=float(self.cfg.weight_decay))
         lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer, milestones=self.cfg.step, gamma=0.1, verbose=True)
+            optimizer, milestones=self.cfg.step, gamma=0.1, verbose=False)
         return [optimizer], [lr_scheduler]
 
 
@@ -286,12 +276,12 @@ if __name__ == '__main__':
         max_epochs=cfg.num_epoch,
         accumulate_grad_batches=1,
         sync_batchnorm=True,
-        strategy='ddp',
+        strategy=DDPPlugin(find_unused_parameters=False),
         num_nodes=1,
         logger=wandb_logger,
         callbacks=[checkpoint_callback],
-        check_val_every_n_epoch=5,
-        plugins=DDPPlugin(find_unused_parameters=False))
+        check_val_every_n_epoch=cfg.eval_interval,
+    )
 
     # start training
     trainer.fit(learner, train_loader, test_loader)
