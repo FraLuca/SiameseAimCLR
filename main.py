@@ -35,15 +35,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Processor collection')
     processors = dict()
 
-    processors['pretrain_aimclr'] = import_class('processor.pretrain_aimclr.AimCLR_Processor')
-    processors['pretrain_siam_aimclr'] = import_class(
-        'processor.pretrain_siam_aimclr.SiameseAimCLR_Processor')
-    processors['pretrain_siam_neg_aimclr'] = import_class(
-        'processor.pretrain_siam_neg_aimclr.SiameseNegAimCLR_Processor')
-    processors['pretrain_byol_aimclr'] = import_class(
-        'processor.pretrain_byol_aimclr.BYOLAimCLR_Processor')
-    processors['pretrain_simsiam_aimclr'] = import_class(
-        'processor.pretrain_simsiam_aimclr.SimSiamAimCLR_Processor')
+    # processors['pretrain_aimclr'] = import_class('processor.pretrain_aimclr.AimCLR_Processor')
+    # processors['pretrain_siam_aimclr'] = import_class(
+    #     'processor.pretrain_siam_aimclr.SiameseAimCLR_Processor')
+    # processors['pretrain_siam_neg_aimclr'] = import_class(
+    #     'processor.pretrain_siam_neg_aimclr.SiameseNegAimCLR_Processor')
+    # processors['pretrain_byol_aimclr'] = import_class(
+    #     'processor.pretrain_byol_aimclr.BYOLAimCLR_Processor')
+    # processors['pretrain_simsiam_aimclr'] = import_class(
+    #     'processor.pretrain_simsiam_aimclr.SimSiamAimCLR_Processor')
     processors['linear_evaluation'] = import_class('processor.linear_evaluation.LE_Processor')
     processors['linear_evaluation_byol'] = import_class(
         'processor.linear_evaluation_byol.LE_Processor')

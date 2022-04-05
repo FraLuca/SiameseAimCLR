@@ -16,8 +16,9 @@ import torch.optim as optim
 from torch.autograd import Variable
 
 with warnings.catch_warnings():
-    warnings.filterwarnings("ignore",category=FutureWarning)
+    warnings.filterwarnings("ignore", category=FutureWarning)
     import h5py
+
 
 class IO():
     def __init__(self, work_dir, save_log=True, print_log=True):
@@ -29,7 +30,7 @@ class IO():
         self.pavi_logger = None
         self.session_file = None
         self.model_text = ''
-        
+
     # PaviLogger is removed in this version
     def log(self, *args, **kwargs):
         pass
@@ -61,8 +62,12 @@ class IO():
             ignore_weights = [ignore_weights]
 
         self.print_log('Load weights from {}.'.format(weights_path))
-        weights = torch.load(weights_path)
-        weights = OrderedDict([[k.split('module.')[-1],
+        # weights = torch.load(weights_path)
+        # weights = OrderedDict([[k.split('module.')[-1],
+        #                         v.cpu()] for k, v in weights.items()])
+
+        weights = torch.load(weights_path)['state_dict']
+        weights = OrderedDict([[k.split('model.')[-1],
                                 v.cpu()] for k, v in weights.items()])
 
         # filter weights
@@ -73,7 +78,7 @@ class IO():
                     ignore_name.append(w)
             for n in ignore_name:
                 weights.pop(n)
-                self.print_log('Filter [{}] remove weights [{}].'.format(i,n))
+                self.print_log('Filter [{}] remove weights [{}].'.format(i, n))
 
         for w in weights:
             self.print_log('Load weights [{}].'.format(w))
@@ -153,8 +158,8 @@ class IO():
         self.print_log('Time consumption:')
         for k in proportion:
             self.print_log(
-                '\t[{}][{}]: {:.4f}'.format(k, proportion[k],self.split_timer[k])
-                )
+                '\t[{}][{}]: {:.4f}'.format(k, proportion[k], self.split_timer[k])
+            )
 
 
 def str2bool(v):
@@ -167,7 +172,7 @@ def str2bool(v):
 
 
 def str2dict(v):
-    return eval('dict({})'.format(v))  #pylint: disable=W0123
+    return eval('dict({})'.format(v))  # pylint: disable=W0123
 
 
 def _import_class_0(name):
@@ -196,7 +201,7 @@ class DictAction(argparse.Action):
         super(DictAction, self).__init__(option_strings, dest, **kwargs)
 
     def __call__(self, parser, namespace, values, option_string=None):
-        input_dict = eval('dict({})'.format(values))  #pylint: disable=W0123
+        input_dict = eval('dict({})'.format(values))  # pylint: disable=W0123
         output_dict = getattr(namespace, self.dest)
         for k in input_dict:
             output_dict[k] = input_dict[k]

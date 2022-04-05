@@ -1,4 +1,4 @@
-work_dir: ./checkpoints/linear_byol_aimclr_joint_xview
+work_dir: ./checkpoints/lt_linear_byol_aimclr_joint_xview
 weights: ./checkpoints/byol_aimclr_nnm_lt/epoch=149-step=22049.ckpt
 ignore_weights: [online_encoder.projector, target_encoder, online_predictor, queue]
 
@@ -6,7 +6,7 @@ ignore_weights: [online_encoder.projector, target_encoder, online_predictor, que
 device: [4,6]
 batch_size: 512
 test_batch_size: 128
-num_epoch: 100
+num_epoch: 80
 stream: 'joint'   # joint | motion | bone
 
 # feeder
@@ -26,9 +26,8 @@ test_feeder_args:
   mmap: True
 
 # model
-model: net.byol_aimclr_lightning.BYOLAimCLR
+model: net.siam_byol.BYOLAimCLR
 model_args:
-  base_encoder: net.st_gcn_no_proj.Model
   pretrain: False
   time_dim: 50
   spat_dim: 25 
@@ -57,3 +56,4 @@ step: [30, 60]
 # log
 save_interval: -1
 eval_interval: 5
+disable_wandb: True
