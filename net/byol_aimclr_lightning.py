@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from net.hyperbolic import MobiusLinear
+from net.hyperbolic import MobiusLinear, square_norm, pairwise_distances
 
 
 import copy
@@ -55,6 +55,14 @@ def loss_fn(x, y, loss_name='cosine_sim'):
     elif loss_name == 'mse':
         loss = nn.MSELoss()
         return loss(x, y).mean(dim=-1)
+
+    elif loss_name=='poincare':
+        (N_pred, D) = x.shape
+        (N_gt, D) = y.shape
+        a = (1 - square_norm(x)).view(N_pred, 1)
+        b = (1 - square_norm(y)).view(1, N_gt)
+        return torch.acosh(1 + 2 * pairwise_distances(x, y) / torch.matmul(a, b))
+
 
 
 # augmentation utils
@@ -204,7 +212,7 @@ class BYOLAimCLR(nn.Module):
         moving_average_decay=0.999, use_momentum=True,  # momentum update parameters
         # other encoder parameters
         dropout=0.5, graph_args={'layout': 'ntu-rgb+d', 'strategy': 'spatial'}, edge_importance_weighting=True,
-        loss_name='cosine_sim', hyperbolic= False, **kwargs
+        loss_name='cosine_sim', hyperbolic=False, **kwargs
     ):
         super().__init__()
 

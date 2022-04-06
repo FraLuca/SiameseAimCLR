@@ -31,6 +31,7 @@ model_args:
     strategy: 'spatial'
   edge_importance_weighting: False
   loss_name: 'cosine_sim'   # cosine_sim - mse
+  hyperbolic: True
 
 # optim
 nesterov: False
