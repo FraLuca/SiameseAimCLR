@@ -7,6 +7,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.plugins import DDPPlugin
 from pathlib import Path
 
 from feeder.ntu_feeder import Feeder_triple
@@ -43,8 +44,11 @@ def load_config(arg):
 class SelfSupervisedLearner(pl.LightningModule):
     def __init__(self, base_encoder, cfg):
         super().__init__()
-        self.model = BYOLAimCLR(base_encoder, **vars(cfg.model_args))
         self.cfg = cfg
+
+        self.model = BYOLAimCLR(base_encoder, **vars(cfg.model_args))
+
+        # self.lambda_nnm = self.cfg.lambda_mining
 
         if cfg.resume_from != 'None':
             print("Resume from checkpoint {} in progress...".format(cfg.resume_from))
@@ -100,25 +104,23 @@ class SelfSupervisedLearner(pl.LightningModule):
         else:
             raise ValueError
 
-        if self.current_epoch <= self.cfg.mining_epoch:
+        if not self.cfg.model_args.use_nnm:
+            loss1, loss2, loss3 = self.model(data1, data2, data3, nnm=False)
+            loss = loss1.mean() + (loss2.mean() + loss3.mean()) / 2.
+
+        elif self.current_epoch < self.cfg.mining_epoch:
             loss1, loss2, loss3 = self.model(data1, data2, data3, nnm=False)
             loss = loss1.mean() + (loss2.mean() + loss3.mean()) / 2.  # the mean does the average per each gpu
 
-            if hasattr(self.model, 'module'):
-                self.model.module.update_ptr(self.cfg.batch_size)
-            else:
-                self.model.update_ptr(self.cfg.batch_size)
         else:
             loss1, loss2, loss3, loss4, loss5, loss6 = self.model(
                 data1, data2, data3, nnm=True, topk=self.cfg.topk)
             loss_a = loss1.mean() + (loss2.mean() + loss3.mean()) / 2.  # the mean does the average per each gpu
             loss_b = loss4.mean() + (loss5.mean() + loss6.mean()) / 2.  # the mean does the average per each gpu
-            loss = (1 - self.cfg.lambda_mining) * loss_a + (self.cfg.lambda_mining) * loss_b
 
-            if hasattr(self.model, 'module'):
-                self.model.module.update_ptr(self.cfg.batch_size)
-            else:
-                self.model.update_ptr(self.cfg.batch_size)
+            self.lambda_nnm = (self.current_epoch - self.cfg.mining_epoch) / \
+                (self.cfg.num_epoch - self.cfg.mining_epoch)
+            loss = (1 - self.lambda_nnm) * loss_a + (self.lambda_nnm) * loss_b
 
         return loss
 
@@ -129,10 +131,15 @@ class SelfSupervisedLearner(pl.LightningModule):
 
     def configure_optimizers(self):
         # return torch.optim.Adam(self.parameters(), lr=LR)
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.cfg.base_lr, momentum=0.9,
-                                    nesterov=self.cfg.nesterov, weight_decay=float(self.cfg.weight_decay))
+        if self.cfg.optimizer == 'SGD':
+            optimizer = torch.optim.SGD(self.parameters(), lr=self.cfg.base_lr, momentum=0.9,
+                                        nesterov=self.cfg.nesterov, weight_decay=float(self.cfg.weight_decay))
+        else:
+            raise ValueError("Invalid optimizer {}".format(self.cfg.optimizer))
+
         lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
             optimizer, milestones=self.cfg.step, gamma=0.1)
+
         return [optimizer], [lr_scheduler]
 
     def on_before_zero_grad(self, _):
@@ -149,9 +156,9 @@ class PeriodicCheckpoint(ModelCheckpoint):
     def on_train_batch_end(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args, **kwargs
     ):
-        if pl_module.current_epoch % self.every == 0:
+        if (pl_module.current_epoch + 1) % self.every == 0:
             assert self.dirpath is not None
-            current = Path(self.dirpath) / f"epoch-{pl_module.current_epoch}.ckpt"
+            current = Path(self.dirpath) / f"epoch-{pl_module.current_epoch + 1}.ckpt"
             trainer.save_checkpoint(current)
 
 
@@ -195,7 +202,7 @@ if __name__ == '__main__':
         max_epochs=cfg.num_epoch,
         accumulate_grad_batches=1,
         sync_batchnorm=True,
-        strategy='ddp',
+        strategy=DDPPlugin(find_unused_parameters=False),
         num_nodes=1,
         logger=wandb_logger,
         callbacks=[checkpoint_callback])

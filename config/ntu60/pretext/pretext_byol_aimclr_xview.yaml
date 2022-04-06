@@ -1,5 +1,5 @@
-work_dir: ./checkpoints/byol_aimclr_nnm_lt
-resume_from: ./checkpoints/byol_aimclr_huge_sgd/epoch250_model.pt    # None | path
+work_dir: ./checkpoints/byol_aimclr_lambda_nnm
+resume_from: None    # None | path
 
 # feeder
 train_feeder: feeder.ntu_feeder.Feeder_triple
@@ -13,15 +13,16 @@ train_feeder_args:
 # model
 model_args:
   pretrain: True
-  queue_size: 16384
+  use_nnm: True
+  queue_size: 32768
   time_dim: 50
   spat_dim: 25
   in_channels: 3
   hidden_channels: 64
-  out_channels: 1024
+  out_channels: 512
   hidden_layer: -1
-  projection_hidden_size: [1024, 1024]
-  predictor_hidden_size: [1024, 1024]
+  projection_hidden_size: [512, 256]
+  predictor_hidden_size: [256, 256]
   moving_average_decay: 0.999
   use_momentum: True
   dropout: 0.5
@@ -34,15 +35,15 @@ model_args:
 # optim
 nesterov: False
 weight_decay: 1e-4
-base_lr: 0.001
+base_lr: 0.1
 optimizer: SGD
-step: [100, 250]
+step: [100, 200]
 
 # training
 device: [4,6]
-batch_size: 256
+batch_size: 380
 test_batch_size: 128
-num_epoch: 150
+num_epoch: 300
 start_epoch: 0
 stream: 'joint'
 
@@ -53,6 +54,6 @@ lambda_mining: 0.9
 
 # log
 log_interval: 25
-save_interval: 10
+save_interval: 25
 eval_interval: -1
 disable_wandb: False

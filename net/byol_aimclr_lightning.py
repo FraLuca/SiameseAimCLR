@@ -196,7 +196,7 @@ class NetWrapper(nn.Module):
 # main class
 class BYOLAimCLR(nn.Module):
     def __init__(
-        self, base_encoder=None, pretrain=True, queue_size=32768,
+        self, base_encoder=None, pretrain=True, use_nnm=False, queue_size=32768,
         time_dim=50, spat_dim=25, in_channels=3, hidden_channels=64, out_channels=1024,  # encoder parameters
         # projector and predictor parameters
         hidden_layer=-1, projection_hidden_size=[4096, 1024], predictor_hidden_size=[1024, 1024],
@@ -232,11 +232,12 @@ class BYOLAimCLR(nn.Module):
             self.target_encoder = None
             self.target_ema_updater = EMA(moving_average_decay)
 
-            # create the queue
-            self.K = queue_size
-            self.register_buffer("queue", torch.randn(projection_hidden_size[-1], queue_size))
-            self.queue = F.normalize(self.queue, dim=0)
-            self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
+            self.use_nnm = use_nnm
+            if use_nnm:
+                # create the queue
+                self.K = queue_size
+                self.register_buffer("queue", torch.randn(projection_hidden_size[-1], queue_size))
+                self.queue = F.normalize(self.queue, dim=0)
 
         # get device of network and make wrapper same device
         device = get_module_device(net)
@@ -263,13 +264,7 @@ class BYOLAimCLR(nn.Module):
     @torch.no_grad()
     def _dequeue_and_enqueue(self, keys):
         batch_size = keys.shape[0]
-        ptr = int(self.queue_ptr)
-        self.queue[:, ptr:(ptr + batch_size)] = keys.T
-
-    @torch.no_grad()
-    def update_ptr(self, batch_size):
-        assert self.K % batch_size == 0  # for simplicity
-        self.queue_ptr[0] = (self.queue_ptr[0] + batch_size) % self.K
+        self.queue = torch.cat((self.queue[:, batch_size:], keys.T), dim=1)
 
     def forward(
         self,
@@ -336,7 +331,7 @@ class BYOLAimCLR(nn.Module):
             loss_ext_drop = loss_one_ext_drop + loss_two_ext_drop
             loss_ext_drop = loss_ext_drop.mean()
 
-        if not target_proj_one.shape[0] == 2:
+        if self.use_nnm and not target_proj_one.shape[0] == 2:
             self._dequeue_and_enqueue(target_proj_one)
 
         return loss, loss_ext, loss_ext_drop
@@ -383,6 +378,7 @@ class BYOLAimCLR(nn.Module):
         loss_ext = None
         loss_ext_drop = None
         if image_one_extreme != None:
+
             # Online_Extreme VS Target
             loss_one_ext = loss_fn(online_pred_one_ext,
                                    target_proj_two.detach(), loss_name=self.loss_name)
