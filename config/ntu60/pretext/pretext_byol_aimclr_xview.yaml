@@ -1,4 +1,4 @@
-work_dir: ./checkpoints/byol_aimclr_lambda_nnm
+work_dir: ./checkpoints/prova
 resume_from: None    # None | path
 
 # feeder
@@ -13,16 +13,16 @@ train_feeder_args:
 # model
 model_args:
   pretrain: True
-  use_nnm: True
+  use_nnm: False
   queue_size: 32768
   time_dim: 50
   spat_dim: 25
   in_channels: 3
   hidden_channels: 64
-  out_channels: 512
+  out_channels: 1024
   hidden_layer: -1
-  projection_hidden_size: [512, 256]
-  predictor_hidden_size: [256, 256]
+  projection_hidden_size: [1024, 1024]
+  predictor_hidden_size: [1024, 1024]
   moving_average_decay: 0.999
   use_momentum: True
   dropout: 0.5
@@ -37,11 +37,11 @@ nesterov: False
 weight_decay: 1e-4
 base_lr: 0.1
 optimizer: SGD
-step: [100, 200]
+step: [150, 250]
 
 # training
 device: [4,6]
-batch_size: 380
+batch_size: 256
 test_batch_size: 128
 num_epoch: 300
 start_epoch: 0
