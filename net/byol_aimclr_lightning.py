@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from net.hyperbolic import MobiusLinear
 
 
 import copy
@@ -196,14 +197,14 @@ class NetWrapper(nn.Module):
 # main class
 class BYOLAimCLR(nn.Module):
     def __init__(
-        self, base_encoder=None, pretrain=True, use_nnm=False, queue_size=32768,
+        self, base_encoder=None, pretrain=True, use_nnm=False, queue_size=32768, 
         time_dim=50, spat_dim=25, in_channels=3, hidden_channels=64, out_channels=1024,  # encoder parameters
         # projector and predictor parameters
         hidden_layer=-1, projection_hidden_size=[4096, 1024], predictor_hidden_size=[1024, 1024],
         moving_average_decay=0.999, use_momentum=True,  # momentum update parameters
         # other encoder parameters
         dropout=0.5, graph_args={'layout': 'ntu-rgb+d', 'strategy': 'spatial'}, edge_importance_weighting=True,
-        loss_name='cosine_sim', **kwargs
+        loss_name='cosine_sim', hyperbolic= False, **kwargs
     ):
         super().__init__()
 
@@ -238,6 +239,15 @@ class BYOLAimCLR(nn.Module):
                 self.K = queue_size
                 self.register_buffer("queue", torch.randn(projection_hidden_size[-1], queue_size))
                 self.queue = F.normalize(self.queue, dim=0)
+
+        self.hyperbolic = hyperbolic
+        if self.hyperbolic:
+            self.hyperbolic_linear = MobiusLinear(self.projection_hidden_size[-1],
+                                                  self.projection_hidden_size[-1],
+                                                  hyperbolic_input=False,
+                                                  hyperbolic_bias=True,
+                                                  nonlin=None
+                                                  )
 
         # get device of network and make wrapper same device
         device = get_module_device(net)
@@ -307,8 +317,16 @@ class BYOLAimCLR(nn.Module):
                 target_proj_one_ext_drop.detach_()
 
         # Online VS Target
-        loss_one = loss_fn(online_pred_one, target_proj_two.detach(), loss_name=self.loss_name)
-        loss_two = loss_fn(online_pred_two, target_proj_one.detach(), loss_name=self.loss_name)
+        if not self.hyperbolic:
+            loss_one = loss_fn(online_pred_one, target_proj_two.detach(), loss_name=self.loss_name)
+            loss_two = loss_fn(online_pred_two, target_proj_one.detach(), loss_name=self.loss_name)
+        else:
+            online_pred_one_h = self.hyperbolic_linear(online_pred_one)
+            online_pred_two_h = self.hyperbolic_linear(online_pred_two)
+            target_proj_one_h = self.hyperbolic_linear(target_proj_one)
+            target_proj_two_h = self.hyperbolic_linear(target_proj_two)
+            loss_one = loss_fn(online_pred_one_h, target_proj_two_h.detach(), loss_name='poincare')
+            loss_two = loss_fn(online_pred_two_h, target_proj_one_h.detach(), loss_name='poincare')
         loss = loss_one + loss_two
         loss = loss.mean()
 
@@ -316,18 +334,26 @@ class BYOLAimCLR(nn.Module):
         loss_ext_drop = None
         if image_one_extreme != None:
             # Online_Extreme VS Target
-            loss_one_ext = loss_fn(online_pred_one_ext,
-                                   target_proj_two.detach(), loss_name=self.loss_name)
-            loss_two_ext = loss_fn(
-                online_pred_two, target_proj_one_ext.detach(), loss_name=self.loss_name)
+            if not self.hyperbolic:
+                loss_one_ext = loss_fn(online_pred_one_ext, target_proj_two.detach(), loss_name=self.loss_name)
+                loss_two_ext = loss_fn(online_pred_two, target_proj_one_ext.detach(), loss_name=self.loss_name)
+            else:
+                online_pred_one_ext_h = self.hyperbolic_linear(online_pred_one_ext)
+                target_proj_one_ext_h = self.hyperbolic_linear(target_proj_one_ext)
+                loss_one_ext = loss_fn(online_pred_one_ext_h, target_proj_two_h.detach(), loss_name='poincare')
+                loss_two_ext = loss_fn(online_pred_two_h, target_proj_one_ext_h.detach(), loss_name='poincare')
             loss_ext = loss_one_ext + loss_two_ext
             loss_ext = loss_ext.mean()
 
             # Online_Extreme_Drop VS Target
-            loss_one_ext_drop = loss_fn(online_pred_one_ext_drop,
-                                        target_proj_two.detach(), loss_name=self.loss_name)
-            loss_two_ext_drop = loss_fn(
-                online_pred_two, target_proj_one_ext_drop.detach(), loss_name=self.loss_name)
+            if not self.hyperbolic:
+                loss_one_ext_drop = loss_fn(online_pred_one_ext_drop,target_proj_two.detach(), loss_name=self.loss_name)
+                loss_two_ext_drop = loss_fn(online_pred_two, target_proj_one_ext_drop.detach(), loss_name=self.loss_name)
+            else:
+                online_pred_one_ext_drop_h = self.hyperbolic_linear(online_pred_one_ext_drop)
+                target_proj_one_ext_drop_h = self.hyperbolic_linear(target_proj_one_ext_drop)
+                loss_one_ext_drop = loss_fn(online_pred_one_ext_drop_h, target_proj_two_h.detach(), loss_name='poincare')
+                loss_two_ext_drop = loss_fn(online_pred_two_h, target_proj_one_ext_drop_h.detach(), loss_name='poincare')
             loss_ext_drop = loss_one_ext_drop + loss_two_ext_drop
             loss_ext_drop = loss_ext_drop.mean()
 
