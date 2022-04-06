@@ -1,98 +1,46 @@
-from tabnanny import verbose
 import torch
 import multiprocessing as mp
 import argparse
-import yaml
-import numpy as np
 
 import pytorch_lightning as pl
 from torchmetrics import Accuracy
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.plugins import DDPPlugin
-from pathlib import Path
 from torch import nn
 from collections import OrderedDict
 
 from feeder.ntu_feeder import Feeder_single
+from feeder.tools import process_stream
 from net.byol_aimclr_lightning import BYOLAimCLR
 from net.st_gcn_no_proj import Model as STGCN
+from tools import load_config
+from net.utils.tools import weights_init
 
 
 pl.seed_everything(123)
 
 
-def load_config(arg):
-    # load YAML config file as dict
-    with open(arg.config, 'r') as f:
-        default_arg = yaml.load(f, Loader=yaml.FullLoader)
-
-    # load new parser with default arguments
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.set_defaults(**default_arg)
-    try:
-        cfg = parser.parse_args('')
-    except Exception as e:
-        print(e)
-
-    # build sub-parsers
-    for k, value in cfg._get_kwargs():
-        if isinstance(value, dict):
-            new_parser = argparse.ArgumentParser(add_help=False)
-            new_parser.set_defaults(**value)
-            cfg.__setattr__(k, new_parser.parse_args(''))
-
-    return cfg
-
-
-def weights_init(m):
-    classname = m.__class__.__name__
-    if classname.find('Conv1d') != -1 or classname.find('Conv2d') != -1 or classname.find('Linear') != -1:
-        m.weight.data.normal_(0.0, 0.02)
-        if m.bias is not None:
-            m.bias.data.fill_(0)
-    elif classname.find('BatchNorm') != -1:
-        m.weight.data.normal_(1.0, 0.02)
-        m.bias.data.fill_(0)
-
-
 class SelfSupervisedLearner(pl.LightningModule):
     def __init__(self, base_encoder, cfg):
         super().__init__()
-        self.model = BYOLAimCLR(base_encoder, **vars(cfg.model_args))
         self.cfg = cfg
-        self.best_top1_acc = 0.
+
+        self.model = BYOLAimCLR(base_encoder, **vars(cfg.model_args))
 
         self.load_weights(cfg.weights, cfg.ignore_weights)
-
-        for name, param in self.model.online_encoder.named_parameters():
-            if not str(name).startswith('projector'):
-                param.requires_grad = False
-        self.num_grad_layers = 2
-
-        if hasattr(self.model, 'encoder_q_motion'):
-            for name, param in self.model.encoder_q_motion.named_parameters():
-                if name not in ['fc.weight', 'fc.bias']:
-                    param.requires_grad = False
-            self.num_grad_layers += 2
-        if hasattr(self.model, 'encoder_q_bone'):
-            for name, param in self.model.encoder_q_bone.named_parameters():
-                if name not in ['fc.weight', 'fc.bias']:
-                    param.requires_grad = False
-            self.num_grad_layers += 2
 
         self.loss = nn.CrossEntropyLoss()
         self.top1_accuracy = Accuracy(top_k=1)
         self.top5_accuracy = Accuracy(top_k=5)
-        # print(self.model)
+        self.best_top1_acc = 0.
 
-        # log hyperparams to wandb
         self.save_hyperparameters()
 
     def load_weights(self, weights_path, ignore_weights=None):
         print("Loading weights from {} ...".format(weights_path))
-        weights = torch.load(weights_path)['state_dict']
+        weights = torch.load(weights_path, map_location='cpu')['state_dict']
         weights = OrderedDict([[k.split('model.')[-1],
                                 v.cpu()] for k, v in weights.items()])
 
@@ -116,32 +64,27 @@ class SelfSupervisedLearner(pl.LightningModule):
             state.update(weights)
             self.model.load_state_dict(state)
 
-        print("Weights loading completed!")
+        self.model = self.model.cuda()
+        # self.model.apply(weights_init)
+
+        for name, param in self.model.online_encoder.named_parameters():
+            if not str(name).startswith('projector'):
+                param.requires_grad = False
+        self.num_grad_layers = 2
+
+        if hasattr(self.model, 'encoder_q_motion'):
+            for name, param in self.model.encoder_q_motion.named_parameters():
+                if name not in ['fc.weight', 'fc.bias']:
+                    param.requires_grad = False
+            self.num_grad_layers += 2
+        if hasattr(self.model, 'encoder_q_bone'):
+            for name, param in self.model.encoder_q_bone.named_parameters():
+                if name not in ['fc.weight', 'fc.bias']:
+                    param.requires_grad = False
+            self.num_grad_layers += 2
 
     def forward(self, data):
-        if self.cfg.stream == 'joint':
-            pass
-        elif self.cfg.stream == 'motion':
-            motion = torch.zeros_like(data)
-
-            motion[:, :, :-1, :, :] = data[:, :, 1:, :, :] - data[:, :, :-1, :, :]
-
-            data = motion
-        elif self.cfg.stream == 'bone':
-            Bone = [(1, 2), (2, 21), (3, 21), (4, 3), (5, 21), (6, 5), (7, 6), (8, 7), (9, 21),
-                    (10, 9), (11, 10), (12, 11), (13, 1), (14, 13), (15, 14), (16, 15), (17, 1),
-                    (18, 17), (19, 18), (20, 19), (21, 21), (22, 23), (23, 8), (24, 25), (25, 12)]
-
-            bone = torch.zeros_like(data)
-
-            for v1, v2 in Bone:
-                bone[:, :, :, v1 - 1, :] = data[:, :, :, v1 - 1, :] - data[:, :, :, v2 - 1, :]
-
-            data = bone
-        else:
-            raise ValueError
-
-        # forward
+        data = process_stream(data, self.cfg.stream)
         output = self.model(None, data, return_projection=True)
         return output
 
@@ -160,7 +103,6 @@ class SelfSupervisedLearner(pl.LightningModule):
         return {'loss': loss, 'pred': output, 'target': label}
 
     def validation_epoch_end(self, outputs):
-
         top1_acc = 0.
         top5_acc = 0.
         loss_epoch = 0.
@@ -202,29 +144,9 @@ class SelfSupervisedLearner(pl.LightningModule):
         return [optimizer], [lr_scheduler]
 
 
-class PeriodicCheckpoint(ModelCheckpoint):
-    def __init__(self, dirpath: str,  every: int):
-        super().__init__()
-        self.dirpath = dirpath
-        self.every = every
-
-    def on_train_batch_end(
-        self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args, **kwargs
-    ):
-        if pl_module.current_epoch % self.every == 0:
-            assert self.dirpath is not None
-            current = Path(self.dirpath) / f"epoch-{pl_module.current_epoch}.ckpt"
-            trainer.save_checkpoint(current)
-
-
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='BYOL AimCLR Training')
-    parser.add_argument('-c', '--config', type=str, required=True,
-                        default='/data_volume/SiameseAimCLR/config/ntu60/linear_eval/prova.yaml')
-    arg = parser.parse_args()
-
-    cfg = load_config(arg)
+    cfg = load_config(name='BYOL AimCLR Linear Evaluation')
 
     # train data loading
     train_feeder = Feeder_single(cfg.train_feeder_args.data_path,
@@ -265,10 +187,10 @@ if __name__ == '__main__':
     if wandb_logger is not None:
         wandb_logger.watch(learner, log_freq=10)
 
-    # checkpoint_callback = PeriodicCheckpoint(dirpath=cfg.work_dir, every=cfg.save_interval)
     checkpoint_callback = ModelCheckpoint(dirpath=cfg.work_dir, save_top_k=1,
-                                          verbose=True, monitor='top1_acc',
+                                          verbose=True, monitor='top1_acc', mode='max',
                                           filename='{epoch}-{top1_acc:.2f}')
+    # lr_monitor = LearningRateMonitor(logging_interval='step')
 
     # init trainer
     trainer = pl.Trainer(
@@ -285,4 +207,3 @@ if __name__ == '__main__':
 
     # start training
     trainer.fit(learner, train_loader, test_loader)
-    # trainer.save_checkpoint(cfg.work_dir + '/best_model.ckpt')

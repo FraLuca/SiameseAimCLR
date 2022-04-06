@@ -1,44 +1,21 @@
 import torch
 import multiprocessing as mp
 import argparse
-import yaml
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
-from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins import DDPPlugin
-from pathlib import Path
 
 from feeder.ntu_feeder import Feeder_triple
+from feeder.tools import process_stream
 from net.byol_aimclr_lightning import BYOLAimCLR
 from net.st_gcn_no_proj import Model as STGCN
+from tools import load_config, PeriodicCheckpoint
+from net.utils.tools import weights_init
 
 
 pl.seed_everything(123)
-
-
-def load_config(arg):
-    # load YAML config file as dict
-    with open(arg.config, 'r') as f:
-        default_arg = yaml.load(f, Loader=yaml.FullLoader)
-
-    # load new parser with default arguments
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.set_defaults(**default_arg)
-    try:
-        cfg = parser.parse_args('')
-    except Exception as e:
-        print(e)
-
-    # build sub-parsers
-    for k, value in cfg._get_kwargs():
-        if isinstance(value, dict):
-            new_parser = argparse.ArgumentParser(add_help=False)
-            new_parser.set_defaults(**value)
-            cfg.__setattr__(k, new_parser.parse_args(''))
-
-    return cfg
 
 
 class SelfSupervisedLearner(pl.LightningModule):
@@ -47,6 +24,7 @@ class SelfSupervisedLearner(pl.LightningModule):
         self.cfg = cfg
 
         self.model = BYOLAimCLR(base_encoder, **vars(cfg.model_args))
+        # self.model.apply(weights_init)
 
         # self.lambda_nnm = self.cfg.lambda_mining
 
@@ -62,47 +40,10 @@ class SelfSupervisedLearner(pl.LightningModule):
     def forward(self, batch):
         [data1, data2, data3], label = batch
 
-        data1 = data1.float()
-        data2 = data2.float()
-        data3 = data3.float()
+        data1 = process_stream(data1.float(), self.cfg.stream)
+        data2 = process_stream(data2.float(), self.cfg.stream)
+        data3 = process_stream(data3.float(), self.cfg.stream)
         label = label.long()
-
-        if self.cfg.stream == 'joint':
-            pass
-        elif self.cfg.stream == 'motion':
-            motion1 = torch.zeros_like(data1)
-            motion2 = torch.zeros_like(data2)
-            motion3 = torch.zeros_like(data3)
-
-            motion1[:, :, :-1, :, :] = data1[:, :, 1:, :, :] - data1[:, :, :-1, :, :]
-            motion2[:, :, :-1, :, :] = data2[:, :, 1:, :, :] - data2[:, :, :-1, :, :]
-            motion3[:, :, :-1, :, :] = data3[:, :, 1:, :, :] - data3[:, :, :-1, :, :]
-
-            data1 = motion1
-            data2 = motion2
-            data3 = motion3
-        elif self.cfg.stream == 'bone':
-            Bone = [(1, 2), (2, 21), (3, 21), (4, 3), (5, 21), (6, 5), (7, 6), (8, 7), (9, 21),
-                    (10, 9), (11, 10), (12, 11), (13, 1), (14, 13), (15, 14), (16, 15), (17, 1),
-                    (18, 17), (19, 18), (20, 19), (21, 21), (22, 23), (23, 8), (24, 25), (25, 12)]
-
-            bone1 = torch.zeros_like(data1)
-            bone2 = torch.zeros_like(data2)
-            bone3 = torch.zeros_like(data3)
-
-            for v1, v2 in Bone:
-                bone1[:, :, :, v1 - 1, :] = data1[:, :, :,
-                                                  v1 - 1, :] - data1[:, :, :, v2 - 1, :]
-                bone2[:, :, :, v1 - 1, :] = data2[:, :, :,
-                                                  v1 - 1, :] - data2[:, :, :, v2 - 1, :]
-                bone3[:, :, :, v1 - 1, :] = data3[:, :, :,
-                                                  v1 - 1, :] - data3[:, :, :, v2 - 1, :]
-
-            data1 = bone1
-            data2 = bone2
-            data3 = bone3
-        else:
-            raise ValueError
 
         if not self.cfg.model_args.use_nnm:
             loss1, loss2, loss3 = self.model(data1, data2, data3, nnm=False)
@@ -110,13 +51,13 @@ class SelfSupervisedLearner(pl.LightningModule):
 
         elif self.current_epoch < self.cfg.mining_epoch:
             loss1, loss2, loss3 = self.model(data1, data2, data3, nnm=False)
-            loss = loss1.mean() + (loss2.mean() + loss3.mean()) / 2.  # the mean does the average per each gpu
+            loss = loss1.mean() + (loss2.mean() + loss3.mean()) / 2.
 
         else:
             loss1, loss2, loss3, loss4, loss5, loss6 = self.model(
                 data1, data2, data3, nnm=True, topk=self.cfg.topk)
-            loss_a = loss1.mean() + (loss2.mean() + loss3.mean()) / 2.  # the mean does the average per each gpu
-            loss_b = loss4.mean() + (loss5.mean() + loss6.mean()) / 2.  # the mean does the average per each gpu
+            loss_a = loss1.mean() + (loss2.mean() + loss3.mean()) / 2.
+            loss_b = loss4.mean() + (loss5.mean() + loss6.mean()) / 2.
 
             self.lambda_nnm = (self.current_epoch - self.cfg.mining_epoch) / \
                 (self.cfg.num_epoch - self.cfg.mining_epoch)
@@ -147,29 +88,9 @@ class SelfSupervisedLearner(pl.LightningModule):
             self.model.update_moving_average()
 
 
-class PeriodicCheckpoint(ModelCheckpoint):
-    def __init__(self, dirpath: str,  every: int):
-        super().__init__()
-        self.dirpath = dirpath
-        self.every = every
-
-    def on_train_batch_end(
-        self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args, **kwargs
-    ):
-        if (pl_module.current_epoch + 1) % self.every == 0:
-            assert self.dirpath is not None
-            current = Path(self.dirpath) / f"epoch-{pl_module.current_epoch + 1}.ckpt"
-            trainer.save_checkpoint(current)
-
-
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='BYOL AimCLR Training')
-    parser.add_argument('-c', '--config', type=str, required=True,
-                        default='/data_volume/SiameseAimCLR/config/ntu60/pretext/prova.yaml')
-    arg = parser.parse_args()
-
-    cfg = load_config(arg)
+    cfg = load_config(name='BYOL AimCLR Training')
 
     # data loading
     train_feeder = Feeder_triple(cfg.train_feeder_args.data_path,
@@ -189,10 +110,10 @@ if __name__ == '__main__':
         wandb_logger = WandbLogger(project='aimclr', group='dev')
 
     # init self-supervised learner
-    model = SelfSupervisedLearner(STGCN, cfg)
+    learner = SelfSupervisedLearner(STGCN, cfg)
 
     if wandb_logger is not None:
-        wandb_logger.watch(model, log_freq=10)
+        wandb_logger.watch(learner, log_freq=10)
 
     checkpoint_callback = PeriodicCheckpoint(dirpath=cfg.work_dir, every=cfg.save_interval)
 
@@ -208,4 +129,4 @@ if __name__ == '__main__':
         callbacks=[checkpoint_callback])
 
     # start training
-    trainer.fit(model, train_loader)
+    trainer.fit(learner, train_loader)

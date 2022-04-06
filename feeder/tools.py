@@ -12,13 +12,38 @@ transform_order = {
 }
 
 
+def process_stream(data, stream):
+    if stream == 'joint':
+        return data
+
+    elif stream == 'motion':
+        motion = torch.zeros_like(data)
+        motion[:, :, :-1, :, :] = data[:, :, 1:, :, :] - data[:, :, :-1, :, :]
+        return motion
+
+    elif stream == 'bone':
+        Bone = [(1, 2), (2, 21), (3, 21), (4, 3), (5, 21), (6, 5), (7, 6), (8, 7), (9, 21),
+                (10, 9), (11, 10), (12, 11), (13, 1), (14, 13), (15, 14), (16, 15), (17, 1),
+                (18, 17), (19, 18), (20, 19), (21, 21), (22, 23), (23, 8), (24, 25), (25, 12)]
+
+        bone = torch.zeros_like(data)
+
+        for v1, v2 in Bone:
+            bone[:, :, :, v1 - 1, :] = data[:, :, :, v1 - 1, :] - data[:, :, :, v2 - 1, :]
+
+        return bone
+
+    else:
+        raise ValueError
+
+
 def shear(data_numpy, r=0.5):
     s1_list = [random.uniform(-r, r), random.uniform(-r, r), random.uniform(-r, r)]
     s2_list = [random.uniform(-r, r), random.uniform(-r, r), random.uniform(-r, r)]
 
     R = np.array([[1,          s1_list[0], s2_list[0]],
                   [s1_list[1], 1,          s2_list[1]],
-                  [s1_list[2], s2_list[2], 1        ]])
+                  [s1_list[2], s2_list[2], 1]])
 
     R = R.transpose()
     data_numpy = np.dot(data_numpy.transpose([1, 2, 3, 0]), R)
@@ -63,19 +88,19 @@ def random_rotate(seq):
         # x
         if axis == 0:
             R = np.array([[1, 0, 0],
-                              [0, cos(angle), sin(angle)],
-                              [0, -sin(angle), cos(angle)]])
+                          [0, cos(angle), sin(angle)],
+                          [0, -sin(angle), cos(angle)]])
         # y
         if axis == 1:
             R = np.array([[cos(angle), 0, -sin(angle)],
-                              [0, 1, 0],
-                              [sin(angle), 0, cos(angle)]])
+                          [0, 1, 0],
+                          [sin(angle), 0, cos(angle)]])
 
         # z
         if axis == 2:
             R = np.array([[cos(angle), sin(angle), 0],
-                              [-sin(angle), cos(angle), 0],
-                              [0, 0, 1]])
+                          [-sin(angle), cos(angle), 0],
+                          [0, 0, 1]])
         R = R.T
         temp = np.matmul(seq, R)
         return temp
@@ -100,7 +125,7 @@ def random_rotate(seq):
     return new_seq
 
 
-def gaus_noise(data_numpy, mean= 0, std=0.01, p=0.5):
+def gaus_noise(data_numpy, mean=0, std=0.01, p=0.5):
     if random.random() < p:
         temp = data_numpy.copy()
         C, T, V, M = data_numpy.shape
@@ -116,7 +141,7 @@ def gaus_filter(data_numpy):
 
 
 class GaussianBlurConv(nn.Module):
-    def __init__(self, channels=3, kernel = 15, sigma = [0.1, 2]):
+    def __init__(self, channels=3, kernel=15, sigma=[0.1, 2]):
         super(GaussianBlurConv, self).__init__()
         self.channels = channels
         self.kernel = kernel
@@ -130,28 +155,29 @@ class GaussianBlurConv(nn.Module):
         kernel = torch.from_numpy(blur_flter).unsqueeze(0).unsqueeze(0)
         # kernel =  kernel.float()
         kernel = kernel.double()
-        kernel = kernel.repeat(self.channels, 1, 1, 1) # (3,1,1,5)
+        kernel = kernel.repeat(self.channels, 1, 1, 1)  # (3,1,1,5)
         self.weight = nn.Parameter(data=kernel, requires_grad=False)
 
         prob = np.random.random_sample()
         x = torch.from_numpy(x)
         if prob < 0.5:
-            x = x.permute(3,0,2,1) # M,C,V,T
-            x = F.conv2d(x, self.weight, padding=(0, int((self.kernel - 1) / 2 )),   groups=self.channels)
-            x = x.permute(1,-1,-2, 0) #C,T,V,M
+            x = x.permute(3, 0, 2, 1)  # M,C,V,T
+            x = F.conv2d(x, self.weight, padding=(
+                0, int((self.kernel - 1) / 2)),   groups=self.channels)
+            x = x.permute(1, -1, -2, 0)  # C,T,V,M
 
         return x.numpy()
 
-class Zero_out_axis(object):
-    def __init__(self, axis = None):
-        self.first_axis = axis
 
+class Zero_out_axis(object):
+    def __init__(self, axis=None):
+        self.first_axis = axis
 
     def __call__(self, data_numpy):
         if self.first_axis != None:
             axis_next = self.first_axis
         else:
-            axis_next = random.randint(0,2)
+            axis_next = random.randint(0, 2)
 
         temp = data_numpy.copy()
         C, T, V, M = data_numpy.shape
@@ -159,12 +185,14 @@ class Zero_out_axis(object):
         temp[axis_next] = x_new
         return temp
 
+
 def axis_mask(data_numpy, p=0.5):
     am = Zero_out_axis()
     if random.random() < p:
         return am(data_numpy)
     else:
         return data_numpy
+
 
 if __name__ == '__main__':
     data_seq = np.ones((3, 50, 25, 2))
