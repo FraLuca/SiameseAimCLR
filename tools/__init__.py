@@ -4,6 +4,7 @@ import argparse
 import yaml
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pathlib import Path
 
 
 def load_config(name):

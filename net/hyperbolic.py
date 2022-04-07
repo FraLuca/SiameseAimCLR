@@ -23,7 +23,7 @@ def mobius_linear(
     if hyperbolic_input:
         output = mobius_matvec(weight, input, k=k)
     else:
-        output = torch.nn.functional.linear(input, weight)
+        output = torch.nn.functional.linear(input.double(), weight.double())
         output = gmath.expmap0(output, k=k)
     if bias is not None:
         if not hyperbolic_bias:

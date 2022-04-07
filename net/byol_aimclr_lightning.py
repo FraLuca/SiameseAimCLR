@@ -250,8 +250,8 @@ class BYOLAimCLR(nn.Module):
 
         self.hyperbolic = hyperbolic
         if self.hyperbolic:
-            self.hyperbolic_linear = MobiusLinear(self.projection_hidden_size[-1],
-                                                  self.projection_hidden_size[-1],
+            self.hyperbolic_linear = MobiusLinear(projection_hidden_size[-1],
+                                                  projection_hidden_size[-1],
                                                   hyperbolic_input=False,
                                                   hyperbolic_bias=True,
                                                   nonlin=None
