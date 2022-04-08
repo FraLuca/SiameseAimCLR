@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from net.utils.tgcn import ConvTemporalGraphical
-from net.utils.graph_stgcn import Graph
+from net.utils.graph import Graph
 from net.att_drop import Simam_Drop
 
 

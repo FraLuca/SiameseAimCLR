@@ -10,7 +10,7 @@ from pytorch_lightning.plugins import DDPPlugin
 from feeder.ntu_feeder import Feeder_triple
 from feeder.tools import process_stream
 from net.byol_aimclr_lightning import BYOLAimCLR
-from net.st_gcn_no_proj import Model as STGCN
+from net.st_gcn import Model as STGCN
 from tools import load_config, PeriodicCheckpoint
 from net.utils.tools import weights_init
 
