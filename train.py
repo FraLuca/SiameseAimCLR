@@ -60,8 +60,9 @@ class SelfSupervisedLearner(pl.LightningModule):
             loss_a = loss1.mean() + (loss2.mean() + loss3.mean()) / 2.
             loss_b = loss4.mean() + (loss5.mean() + loss6.mean()) / 2.
 
-            self.lambda_nnm = (self.current_epoch - self.cfg.mining_epoch) / \
-                (self.cfg.num_epoch - self.cfg.mining_epoch)
+            if self.lambda_nnm == 'None':
+                self.lambda_nnm = (self.current_epoch - self.cfg.mining_epoch) / \
+                    (self.cfg.num_epoch - self.cfg.mining_epoch)
             loss = (1 - self.lambda_nnm) * loss_a + (self.lambda_nnm) * loss_b
 
         return loss
