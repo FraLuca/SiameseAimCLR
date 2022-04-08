@@ -1,9 +1,9 @@
-work_dir: ./checkpoints/lt_linear_byol_aimclr_joint_xview
-weights: ./checkpoints/byol_aimclr_mse/epoch-150.ckpt
-ignore_weights: [online_encoder.projector, target_encoder, online_predictor, queue]
+work_dir: ./checkpoints/byol_aimclr_hyper_prova
+weights: ./checkpoints/byol_aimclr_hyper_prova/epoch-100.ckpt
+ignore_weights: [online_encoder.projector, target_encoder, online_predictor, queue, hyperbolic_linear]
 
 # training
-device: [5,7]
+device: [4,6]
 batch_size: 512
 test_batch_size: 128
 num_epoch: 100
@@ -32,10 +32,11 @@ model_args:
   time_dim: 50
   spat_dim: 25 
   in_channels: 3
-  hidden_channels: 64
-  out_channels: 512
+  hidden_channels: 32
+  out_channels: 256
   hidden_layer: -1
   projection_hidden_size: [60]
+  hyperbolic_proj_mask: [1]
   # projection_size: 60
   # predictor_hidden_size: 1024
   # moving_average_decay: 0.999
@@ -50,8 +51,8 @@ model_args:
 nesterov: False
 weight_decay: 0.0
 base_lr: 0.1
-optimizer: SGD
-step: [20, 60]
+optimizer: RiemannianSGD # SGD - RiemannianSGD - RiemannianAdam
+step: [30, 60]
 
 # log
 save_interval: -1
