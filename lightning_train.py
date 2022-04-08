@@ -13,6 +13,7 @@ from net.byol_aimclr_lightning import BYOLAimCLR
 from net.st_gcn_no_proj import Model as STGCN
 from tools import load_config, PeriodicCheckpoint
 from net.utils.tools import weights_init
+from geoopt.optim import RiemannianSGD, RiemannianAdam
 
 
 pl.seed_everything(123)
@@ -75,6 +76,11 @@ class SelfSupervisedLearner(pl.LightningModule):
         if self.cfg.optimizer == 'SGD':
             optimizer = torch.optim.SGD(self.parameters(), lr=self.cfg.base_lr, momentum=0.9,
                                         nesterov=self.cfg.nesterov, weight_decay=float(self.cfg.weight_decay))
+        elif self.cfg.model_args.hyperbolic and self.cfg.optimizer == 'RiemannianSGD':
+            optimizer = RiemannianSGD(self.parameters(), lr=self.cfg.base_lr, momentum=0.9,
+                                        nesterov=self.cfg.nesterov, weight_decay=float(self.cfg.weight_decay))
+        elif self.cfg.model_args.hyperbolic:
+            optimizer = RiemannianAdam(self.parameters(), lr=self.cfg.base_lr, weight_decay=float(self.cfg.weight_decay))
         else:
             raise ValueError("Invalid optimizer {}".format(self.cfg.optimizer))
 

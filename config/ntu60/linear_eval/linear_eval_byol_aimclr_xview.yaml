@@ -37,6 +37,7 @@ model_args:
   out_channels: 1024
   hidden_layer: -1
   projection_hidden_size: [60]
+  hyperbolic_proj_mask: [1]
   # projection_size: 60
   # predictor_hidden_size: 1024
   # moving_average_decay: 0.999

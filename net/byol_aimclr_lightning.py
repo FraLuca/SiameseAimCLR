@@ -102,20 +102,44 @@ def update_moving_average(ema_updater, ma_model, current_model):
 
 
 class MLP(nn.Module):
-    def __init__(self, dim, projection_size):
+    def __init__(self, dim, projection_size, hyperbolic_mask=None, hyperbolic_input=0):
         super().__init__()
+
+        if hyperbolic_mask != None:
+            assert len(projection_size) == len(hyperbolic_mask)
+        else:
+            hyperbolic_mask = [0]*len(projection_size)
 
         n_layers = len(projection_size)
         layer_list = []
 
-        for idx, next_dim in enumerate(projection_size):
+        old_h_mask = hyperbolic_input
+
+        for idx, (next_dim, h_mask) in enumerate(zip(projection_size, hyperbolic_mask)):
 
             if idx == n_layers-1:
-                layer_list.append(nn.Linear(dim, next_dim))
+                if h_mask == 0:
+                    layer_list.append(nn.Linear(dim, next_dim))
+                    old_h_mask = 0
+                elif (h_mask == 1) and (old_h_mask == 0):
+                    layer_list.append(MobiusLinear(dim, next_dim, hyperbolic_input=False, hyperbolic_bias=True, nonlin=None))
+                    old_h_mask = 1
+                elif (h_mask == 1) and (old_h_mask == 1):
+                    layer_list.append(MobiusLinear(dim, next_dim, hyperbolic_input=True, hyperbolic_bias=True, nonlin=None))
+                    old_h_mask = 1
             else:
-                layer_list.append(nn.Linear(dim, next_dim))
-                layer_list.append(nn.BatchNorm1d(next_dim))
-                layer_list.append(nn.ReLU(inplace=True))
+                if h_mask == 0:
+                    layer_list.append(nn.Linear(dim, next_dim))
+                    layer_list.append(nn.BatchNorm1d(next_dim))
+                    layer_list.append(nn.ReLU(inplace=True))
+                    old_h_mask = 0
+                elif (h_mask == 1) and (old_h_mask == 0):
+                    layer_list.append(MobiusLinear(dim, next_dim, hyperbolic_input=False, hyperbolic_bias=True, nonlin=nn.ReLU(inplace=True)))
+                    old_h_mask = 1
+                elif (h_mask == 1) and (old_h_mask == 1):
+                    layer_list.append(MobiusLinear(dim, next_dim, hyperbolic_input=True, hyperbolic_bias=True, nonlin=nn.ReLU(inplace=True)))
+                    old_h_mask = 1
+
                 dim = next_dim
 
         self.net = nn.Sequential(*layer_list)
@@ -129,7 +153,7 @@ class MLP(nn.Module):
 # and pipe it into the projecter and predictor nets
 
 class NetWrapper(nn.Module):
-    def __init__(self, net, projection_hidden_size, layer=-2):
+    def __init__(self, net, projection_hidden_size, layer=-2, hyperbolic_mask=None):
         super().__init__()
         self.net = net
         self.layer = layer
@@ -137,6 +161,7 @@ class NetWrapper(nn.Module):
         self.projector = None
         # self.projection_size = projection_size
         self.projection_hidden_size = projection_hidden_size
+        self.hyperbolic_mask=hyperbolic_mask
 
         self.hidden = {}
         self.hook_registered = False
@@ -163,7 +188,7 @@ class NetWrapper(nn.Module):
     @singleton('projector')
     def _get_projector(self, hidden):
         _, dim = hidden.shape
-        projector = MLP(dim, self.projection_hidden_size)
+        projector = MLP(dim, self.projection_hidden_size, hyperbolic_mask=self.hyperbolic_mask)
         return projector.to(hidden)
 
     def get_representation(self, x, drop=False):
@@ -212,7 +237,7 @@ class BYOLAimCLR(nn.Module):
         moving_average_decay=0.999, use_momentum=True,  # momentum update parameters
         # other encoder parameters
         dropout=0.5, graph_args={'layout': 'ntu-rgb+d', 'strategy': 'spatial'}, edge_importance_weighting=True,
-        loss_name='cosine_sim', hyperbolic=False, **kwargs
+        loss_name='cosine_sim', hyperbolic=False, hyperbolic_proj_mask=None, hyperbolic_pred_mask=None, **kwargs
     ):
         super().__init__()
 
@@ -226,16 +251,16 @@ class BYOLAimCLR(nn.Module):
                                dropout=dropout, graph_args=graph_args,
                                edge_importance_weighting=edge_importance_weighting, **kwargs)
             self.online_encoder = NetWrapper(
-                net, projection_hidden_size, layer=hidden_layer)
+                net, projection_hidden_size, layer=hidden_layer, hyperbolic_mask=hyperbolic_proj_mask)
         else:
             net = base_encoder(in_channels=in_channels, hidden_channels=hidden_channels, out_channels=out_channels,
                                dropout=dropout, graph_args=graph_args,
                                edge_importance_weighting=edge_importance_weighting, **kwargs)
-            # self.net = net
-            self.online_encoder = NetWrapper(
-                net, projection_hidden_size, layer=hidden_layer)
 
-            self.online_predictor = MLP(projection_hidden_size[-1], predictor_hidden_size)
+            self.online_encoder = NetWrapper(
+                net, projection_hidden_size, layer=hidden_layer, hyperbolic_mask=hyperbolic_proj_mask)
+
+            self.online_predictor = MLP(projection_hidden_size[-1], predictor_hidden_size, hyperbolic_mask=hyperbolic_pred_mask, hyperbolic_input=int(hyperbolic))
 
             self.use_momentum = use_momentum
             self.target_encoder = None
@@ -249,13 +274,12 @@ class BYOLAimCLR(nn.Module):
                 self.queue = F.normalize(self.queue, dim=0)
 
         self.hyperbolic = hyperbolic
-        if self.hyperbolic:
-            self.hyperbolic_linear = MobiusLinear(projection_hidden_size[-1],
-                                                  projection_hidden_size[-1],
-                                                  hyperbolic_input=False,
-                                                  hyperbolic_bias=True,
-                                                  nonlin=None
-                                                  )
+        # if self.hyperbolic:
+        #     self.hyperbolic_linear = MobiusLinear(projection_hidden_size[-1],
+        #                                           projection_hidden_size[-1],
+        #                                           hyperbolic_input=False,
+        #                                           hyperbolic_bias=True,
+        #                                           nonlin=None)
 
         # get device of network and make wrapper same device
         device = get_module_device(net)
@@ -329,12 +353,12 @@ class BYOLAimCLR(nn.Module):
             loss_one = loss_fn(online_pred_one, target_proj_two.detach(), loss_name=self.loss_name)
             loss_two = loss_fn(online_pred_two, target_proj_one.detach(), loss_name=self.loss_name)
         else:
-            online_pred_one_h = self.hyperbolic_linear(online_pred_one)
-            online_pred_two_h = self.hyperbolic_linear(online_pred_two)
-            target_proj_one_h = self.hyperbolic_linear(target_proj_one)
-            target_proj_two_h = self.hyperbolic_linear(target_proj_two)
-            loss_one = loss_fn(online_pred_one_h, target_proj_two_h.detach(), loss_name='poincare')
-            loss_two = loss_fn(online_pred_two_h, target_proj_one_h.detach(), loss_name='poincare')
+            # online_pred_one = self.hyperbolic_linear(online_pred_one)
+            # online_pred_two = self.hyperbolic_linear(online_pred_two)
+            # target_proj_one = self.hyperbolic_linear(target_proj_one)
+            # target_proj_two = self.hyperbolic_linear(target_proj_two)
+            loss_one = loss_fn(online_pred_one, target_proj_two.detach(), loss_name='poincare')
+            loss_two = loss_fn(online_pred_two, target_proj_one.detach(), loss_name='poincare')
         loss = loss_one + loss_two
         loss = loss.mean()
 
@@ -346,10 +370,10 @@ class BYOLAimCLR(nn.Module):
                 loss_one_ext = loss_fn(online_pred_one_ext, target_proj_two.detach(), loss_name=self.loss_name)
                 loss_two_ext = loss_fn(online_pred_two, target_proj_one_ext.detach(), loss_name=self.loss_name)
             else:
-                online_pred_one_ext_h = self.hyperbolic_linear(online_pred_one_ext)
-                target_proj_one_ext_h = self.hyperbolic_linear(target_proj_one_ext)
-                loss_one_ext = loss_fn(online_pred_one_ext_h, target_proj_two_h.detach(), loss_name='poincare')
-                loss_two_ext = loss_fn(online_pred_two_h, target_proj_one_ext_h.detach(), loss_name='poincare')
+                # online_pred_one_ext = self.hyperbolic_linear(online_pred_one_ext)
+                # target_proj_one_ext = self.hyperbolic_linear(target_proj_one_ext)
+                loss_one_ext = loss_fn(online_pred_one_ext, target_proj_two.detach(), loss_name='poincare')
+                loss_two_ext = loss_fn(online_pred_two, target_proj_one_ext.detach(), loss_name='poincare')
             loss_ext = loss_one_ext + loss_two_ext
             loss_ext = loss_ext.mean()
 
@@ -358,10 +382,10 @@ class BYOLAimCLR(nn.Module):
                 loss_one_ext_drop = loss_fn(online_pred_one_ext_drop,target_proj_two.detach(), loss_name=self.loss_name)
                 loss_two_ext_drop = loss_fn(online_pred_two, target_proj_one_ext_drop.detach(), loss_name=self.loss_name)
             else:
-                online_pred_one_ext_drop_h = self.hyperbolic_linear(online_pred_one_ext_drop)
-                target_proj_one_ext_drop_h = self.hyperbolic_linear(target_proj_one_ext_drop)
-                loss_one_ext_drop = loss_fn(online_pred_one_ext_drop_h, target_proj_two_h.detach(), loss_name='poincare')
-                loss_two_ext_drop = loss_fn(online_pred_two_h, target_proj_one_ext_drop_h.detach(), loss_name='poincare')
+                # online_pred_one_ext_drop = self.hyperbolic_linear(online_pred_one_ext_drop)
+                # target_proj_one_ext_drop = self.hyperbolic_linear(target_proj_one_ext_drop)
+                loss_one_ext_drop = loss_fn(online_pred_one_ext_drop, target_proj_two.detach(), loss_name='poincare')
+                loss_two_ext_drop = loss_fn(online_pred_two, target_proj_one_ext_drop.detach(), loss_name='poincare')
             loss_ext_drop = loss_one_ext_drop + loss_two_ext_drop
             loss_ext_drop = loss_ext_drop.mean()
 
