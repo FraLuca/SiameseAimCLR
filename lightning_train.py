@@ -16,6 +16,7 @@ from net.utils.tools import weights_init
 
 
 pl.seed_everything(123)
+torch.use_deterministic_algorithms(True)
 
 
 class SelfSupervisedLearner(pl.LightningModule):
