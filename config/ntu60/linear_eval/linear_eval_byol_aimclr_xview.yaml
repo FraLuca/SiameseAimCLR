@@ -9,24 +9,14 @@ test_batch_size: 128
 num_epoch: 100
 stream: 'joint'   # joint | motion | bone
 
-# feeder
-train_feeder: feeder.ntu_feeder.Feeder_single
-train_feeder_args:
-  data_path: ./data/ntu60_aimclr/ntu60_frame50/xview/train_position.npy
-  label_path: ./data/ntu60_aimclr/ntu60/xview/train_label.pkl
-  shear_amplitude: -1
-  temperal_padding_ratio: -1
-  mmap: True
-test_feeder: feeder.ntu_feeder.Feeder_single
-test_feeder_args:
-  data_path: ./data/ntu60_aimclr/ntu60_frame50/xview/val_position.npy
-  label_path: ./data/ntu60_aimclr/ntu60/xview/val_label.pkl
-  shear_amplitude: -1
-  temperal_padding_ratio: -1
-  mmap: True
+# optim
+nesterov: False
+weight_decay: 0.0
+base_lr: 2.
+optimizer: SGD
+step: [10, 30, 60]
 
 # model
-model: net.siam_byol.BYOLAimCLR
 model_args:
   pretrain: False
   time_dim: 50
@@ -41,14 +31,22 @@ model_args:
     strategy: 'spatial'
   edge_importance_weighting: True
 
-# optim
-nesterov: False
-weight_decay: 0.0
-base_lr: 2.
-optimizer: SGD
-step: [10, 30, 60]
-
 # log
 save_interval: -1
 eval_interval: 5
 disable_wandb: True
+
+# feeder
+train_feeder_args:
+  data_path: ./data/ntu60_aimclr/ntu60_frame50/xview/train_position.npy
+  label_path: ./data/ntu60_aimclr/ntu60/xview/train_label.pkl
+  shear_amplitude: -1
+  temperal_padding_ratio: -1
+  mmap: True
+test_feeder: feeder.ntu_feeder.Feeder_single
+test_feeder_args:
+  data_path: ./data/ntu60_aimclr/ntu60_frame50/xview/val_position.npy
+  label_path: ./data/ntu60_aimclr/ntu60/xview/val_label.pkl
+  shear_amplitude: -1
+  temperal_padding_ratio: -1
+  mmap: True

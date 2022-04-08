@@ -13,8 +13,8 @@ from collections import OrderedDict
 
 from feeder.ntu_feeder import Feeder_single
 from feeder.tools import process_stream
-from net.byol_aimclr_lightning import BYOLAimCLR
-from net.st_gcn import Model as STGCN
+from net.byol_aimclr import BYOLAimCLR
+from net.st_gcn_no_proj import Model as STGCN
 from tools import load_config
 from net.utils.tools import weights_init
 
@@ -36,7 +36,7 @@ class SelfSupervisedLearner(pl.LightningModule):
         self.top5_accuracy = Accuracy(top_k=5)
         self.best_top1_acc = 0.
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore='base_encoder')
 
     def load_weights(self, weights_path, ignore_weights=None):
         print("Loading weights from {} ...".format(weights_path))

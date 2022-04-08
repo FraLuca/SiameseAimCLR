@@ -2,7 +2,7 @@ work_dir: ./checkpoints/prova
 resume_from: None    # None | path
 
 # training
-device: [4,6]
+device: [0,1]
 batch_size: 256
 test_batch_size: 128
 num_epoch: 300
@@ -20,7 +20,7 @@ step: [150, 250]
 log_interval: 25
 save_interval: 25
 eval_interval: -1
-disable_wandb: False
+disable_wandb: True
 
 # model
 model_args:
@@ -30,11 +30,11 @@ model_args:
   time_dim: 50
   spat_dim: 25
   in_channels: 3
-  hidden_channels: 64
-  out_channels: 1024
+  hidden_channels: 32
+  out_channels: 256
   hidden_layer: -1
-  projection_hidden_size: [1024, 1024]
-  predictor_hidden_size: [1024, 1024]
+  projection_hidden_size: [256, 128]
+  predictor_hidden_size: [128, 128]
   moving_average_decay: 0.999
   use_momentum: True
   dropout: 0.5
@@ -51,8 +51,8 @@ lambda_mining: 0.9
 
 # feeder
 train_feeder_args:
-  data_path: ./data/ntu60_aimclr/ntu60_frame50/xview/train_position.npy
-  label_path: ./data/ntu60_aimclr/ntu60/xview/train_label.pkl
+  data_path: /data_volume/data/ntu60_aimclr/ntu60_frame50/xview/train_position.npy
+  label_path: /data_volume/data/ntu60_aimclr/ntu60/xview/train_label.pkl
   shear_amplitude: 0.5
   temperal_padding_ratio: 6
   mmap: True
