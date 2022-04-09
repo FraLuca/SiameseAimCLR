@@ -27,7 +27,7 @@ class SelfSupervisedLearner(pl.LightningModule):
         self.model = BYOLAimCLR(base_encoder, **vars(cfg.model_args))
         # self.model.apply(weights_init)
 
-        # self.lambda_nnm = self.cfg.lambda_mining
+        self.lambda_nnm = self.cfg.lambda_mining
 
         if cfg.resume_from != 'None':
             print("Resume from checkpoint {} in progress...".format(cfg.resume_from))
