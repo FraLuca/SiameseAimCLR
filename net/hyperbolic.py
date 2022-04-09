@@ -21,7 +21,7 @@ def mobius_linear(
 ):
     k = torch.tensor(k)
     if hyperbolic_input:
-        output = mobius_matvec(weight, input, k=k)
+        output = mobius_matvec(weight.double(), input.double(), k=k)
     else:
         output = torch.nn.functional.linear(input.double(), weight.double())
         output = gmath.expmap0(output, k=k)

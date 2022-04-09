@@ -1,9 +1,9 @@
-work_dir: ./checkpoints/byol_aimclr_hyper_prova
+work_dir: ./checkpoints/byol_aimclr_hyper_hard
 weights: ./checkpoints/byol_aimclr_hyper_prova/epoch-100.ckpt
 ignore_weights: [online_encoder.projector, target_encoder, online_predictor, queue, hyperbolic_linear]
 
 # training
-device: [4,6]
+device: [0,1]
 batch_size: 512
 test_batch_size: 128
 num_epoch: 100

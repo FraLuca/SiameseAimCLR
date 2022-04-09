@@ -37,6 +37,7 @@ class SelfSupervisedLearner(pl.LightningModule):
 
         # log hyperparams to wandb
         self.save_hyperparameters()
+        print(self.model)
 
     def forward(self, batch):
         [data1, data2, data3], label = batch
@@ -47,8 +48,9 @@ class SelfSupervisedLearner(pl.LightningModule):
         label = label.long()
 
         if not self.cfg.model_args.use_nnm:
+            data1 = None
             loss1, loss2, loss3 = self.model(data1, data2, data3, nnm=False)
-            loss = loss1.mean() + (loss2.mean() + loss3.mean()) / 2.
+            loss = loss1.mean() # + (loss2.mean() + loss3.mean()) / 2.
 
         elif self.current_epoch < self.cfg.mining_epoch:
             loss1, loss2, loss3 = self.model(data1, data2, data3, nnm=False)
@@ -76,11 +78,14 @@ class SelfSupervisedLearner(pl.LightningModule):
         if self.cfg.optimizer == 'SGD':
             optimizer = torch.optim.SGD(self.parameters(), lr=self.cfg.base_lr, momentum=0.9,
                                         nesterov=self.cfg.nesterov, weight_decay=float(self.cfg.weight_decay))
+        elif self.cfg.optimizer == 'Adam':
+            optimizer = torch.optim.Adam(self.parameters(), lr=self.cfg.base_lr,
+                                         betas=(0.9, 0.999), eps=1e-08, weight_decay=float(self.cfg.weight_decay))
         elif self.cfg.model_args.hyperbolic and self.cfg.optimizer == 'RiemannianSGD':
             optimizer = RiemannianSGD(self.parameters(), lr=self.cfg.base_lr, momentum=0.9,
                                         nesterov=self.cfg.nesterov, weight_decay=float(self.cfg.weight_decay))
         elif self.cfg.model_args.hyperbolic:
-            optimizer = RiemannianAdam(self.parameters(), lr=self.cfg.base_lr, weight_decay=float(self.cfg.weight_decay))
+            optimizer = RiemannianAdam(self.parameters(), lr=self.cfg.base_lr, weight_decay=float(self.cfg.weight_decay), stabilize=10)
         else:
             raise ValueError("Invalid optimizer {}".format(self.cfg.optimizer))
 

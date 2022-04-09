@@ -1,11 +1,11 @@
-work_dir: ./checkpoints/byol_aimclr_hyper_prova
+work_dir: ./checkpoints/byol_aimclr_hyper_hard_adam
 resume_from: None    # None | path
 
 # feeder
 train_feeder: feeder.ntu_feeder.Feeder_triple
 train_feeder_args:
-  data_path: ./data/ntu60_aimclr/ntu60_frame50/xview/train_position.npy
-  label_path: ./data/ntu60_aimclr/ntu60/xview/train_label.pkl
+  data_path: /storage/data/ntu60_aimclr/ntu60_frame50/xview/train_position.npy
+  label_path: /storage/data/ntu60_aimclr/ntu60/xview/train_label.pkl
   shear_amplitude: 0.5
   temperal_padding_ratio: 6
   mmap: True
@@ -13,7 +13,7 @@ train_feeder_args:
 # model
 model_args:
   pretrain: True
-  use_nnm: True
+  use_nnm: False
   queue_size: 32768
   time_dim: 50
   spat_dim: 25
@@ -22,9 +22,9 @@ model_args:
   out_channels: 256
   hidden_layer: -1
   projection_hidden_size: [256, 128]
-  hyperbolic_proj_mask: [0,1]
+  hyperbolic_proj_mask: [0,0]
   predictor_hidden_size: [128, 128]
-  hyperbolic_pred_mask: [1,1]
+  hyperbolic_pred_mask: [0,0]
   moving_average_decay: 0.999
   use_momentum: True
   dropout: 0.5
@@ -37,14 +37,14 @@ model_args:
 
 # optim
 nesterov: False
-weight_decay: 1e-4
-base_lr: 0.1
-optimizer: RiemannianSGD # SGD - RiemannianSGD - RiemannianAdam
+weight_decay: 1e-5
+base_lr: 0.0001
+optimizer: Adam  # Adam - SGD - RiemannianSGD - RiemannianAdam
 step: [100, 200]
 
 # training
-device: [2,5]
-batch_size: 300
+device: [0,1]
+batch_size: 512
 test_batch_size: 128
 num_epoch: 300
 start_epoch: 0
